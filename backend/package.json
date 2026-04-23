@@ -1,0 +1,24 @@
+{
+  "name": "crisislink-backend",
+  "version": "1.0.0",
+  "description": "CrisisLink Backend Server - Hyperlocal Crisis Network",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Run individual test files: node __tests__/test_processor.js\""
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2"
+  },
+  "keywords": [
+    "crisis",
+    "emergency",
+    "hyperlocal",
+    "voice",
+    "real-time"
+  ],
+  "author": "Krish & Team",
+  "license": "MIT"
+}
