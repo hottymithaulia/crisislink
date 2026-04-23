@@ -7,16 +7,23 @@
 const PingEvent = require('./PingEvent');
 
 class EventStore {
-  constructor() {
+  constructor(config = {}) {
     // Map of event ID -> PingEvent object
     this.events = new Map();
     
     // Map of user ID -> reputation tracking data
     this.userReputation = new Map();
     
-    // Configuration
-    this.maxEvents = 1000; // Prevent memory bloat
-    this.retentionHours = 24; // Auto-expire old events
+    // Configuration injection
+    this.config = {
+      maxEvents: config.maxEvents || 1000,
+      retentionHours: config.retentionHours || 24,
+      cleanupIntervalMinutes: config.cleanupIntervalMinutes || 60,
+      ...config
+    };
+    
+    // Start cleanup interval
+    this.startCleanupInterval();
   }
 
   /**
@@ -46,7 +53,7 @@ class EventStore {
     userRep.total++;
 
     // Enforce max events limit (remove oldest)
-    if (this.events.size > this.maxEvents) {
+    if (this.events.size > this.config.maxEvents) {
       const oldestId = this.getOldestEventId();
       if (oldestId) {
         this.events.delete(oldestId);
@@ -253,6 +260,48 @@ class EventStore {
     } catch (error) {
       console.error('Failed to load from localStorage:', error);
       return false;
+    }
+  }
+
+  /**
+   * Start automatic cleanup of old events
+   */
+  startCleanupInterval() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupOldEvents();
+    }, this.config.cleanupIntervalMinutes * 60 * 1000);
+  }
+
+  /**
+   * Remove events older than retention period
+   */
+  cleanupOldEvents() {
+    const cutoff = Date.now() - (this.config.retentionHours * 60 * 60 * 1000);
+    let removedCount = 0;
+
+    for (const [id, event] of this.events.entries()) {
+      if (event.timestamp < cutoff) {
+        this.events.delete(id);
+        removedCount++;
+      }
+    }
+
+    if (removedCount > 0) {
+      console.log(`🧹 Cleaned up ${removedCount} old events`);
+    }
+  }
+
+  /**
+   * Stop cleanup interval (for testing)
+   */
+  stopCleanupInterval() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
     }
   }
 }

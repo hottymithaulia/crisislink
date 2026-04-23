@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import apiService from '../api/api';
 import '../styles/VoiceRecorder.css';
 
 function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
@@ -98,22 +99,28 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
       }
 
       const eventData = {
-        text: transcript.trim(),
+        description: transcript.trim(),
         lat: userLocation.lat,
         lon: userLocation.lon,
-        user_id: userId,
         voice_url: audioBlob ? URL.createObjectURL(audioBlob) : null
       };
 
-      const response = await fetch('http://localhost:3001/events', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(eventData),
-      });
+      // First analyze the voice to get incident type and urgency
+      let analysis = null;
+      try {
+        analysis = await apiService.analyzeVoice(transcript.trim());
+      } catch (error) {
+        console.warn('Voice analysis failed, using defaults:', error);
+      }
 
-      const result = await response.json();
+      // Create event with analysis results
+      const eventPayload = {
+        ...eventData,
+        type: analysis?.data?.analysis?.type || 'medical',
+        urgency: analysis?.data?.analysis?.urgency || 'medium'
+      };
+
+      const result = await apiService.createEvent(eventPayload);
 
       if (result.success) {
         setPostStatus('success');
@@ -141,11 +148,7 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
     }
   };
 
-  // Handle manual transcript input (for browsers without recording)
-  const handleManualInput = () => {
-    setTranscript('');
-  };
-
+  
   return (
     <div className="voice-recorder-container">
       <div className="recorder-header">

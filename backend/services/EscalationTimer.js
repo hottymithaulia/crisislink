@@ -5,35 +5,42 @@
  */
 
 class EscalationTimer {
-  constructor() {
-    // Escalation stages configuration
-    this.escalationStages = {
-      hyperlocal: {
-        minMinutes: 0,
-        maxMinutes: 5,
-        radiusKm: 1,
-        color: '#3b82f6', // Blue
-        label: 'Hyperlocal (1 km)',
-        description: 'Immediate vicinity only'
+  constructor(config = {}) {
+    // Configuration injection
+    this.config = {
+      stages: config.stages || {
+        hyperlocal: {
+          minMinutes: 0,
+          maxMinutes: 5,
+          radiusKm: 1,
+          color: '#3b82f6', // Blue
+          label: 'Hyperlocal (1 km)',
+          description: 'Immediate vicinity only'
+        },
+        neighborhood: {
+          minMinutes: 5,
+          maxMinutes: 15,
+          radiusKm: 5,
+          color: '#f59e0b', // Yellow/Orange
+          label: 'Neighborhood (5 km)',
+          description: 'Expanding to neighborhood'
+        },
+        unresolved: {
+          minMinutes: 15,
+          maxMinutes: Infinity,
+          radiusKm: 25,
+          color: '#ef4444', // Red
+          label: 'Unresolved (25 km)',
+          description: 'Requires authority attention',
+          triggersCloudEscalation: true
+        }
       },
-      neighborhood: {
-        minMinutes: 5,
-        maxMinutes: 15,
-        radiusKm: 5,
-        color: '#f59e0b', // Yellow/Orange
-        label: 'Neighborhood (5 km)',
-        description: 'Expanding to neighborhood'
-      },
-      unresolved: {
-        minMinutes: 15,
-        maxMinutes: Infinity,
-        radiusKm: 25,
-        color: '#ef4444', // Red
-        label: 'Unresolved (25 km)',
-        description: 'Requires authority attention',
-        triggersCloudEscalation: true
-      }
+      checkIntervalSeconds: config.checkIntervalSeconds || 10,
+      ...config
     };
+    
+    // Escalation stages configuration
+    this.escalationStages = this.config.stages;
   }
 
   /**

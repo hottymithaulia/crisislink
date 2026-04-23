@@ -5,31 +5,42 @@
  */
 
 class ReputationEngine {
-  constructor() {
-    // Display tiers for reputation scores
-    this.tiers = {
-      trusted: {
-        minScore: 0.8,
-        color: '#22c55e', // Green
-        icon: '✓',
-        label: 'Trusted',
-        description: 'Highly reliable reporter'
+  constructor(config = {}) {
+    // Configuration injection
+    this.config = {
+      tiers: config.tiers || {
+        trusted: {
+          minScore: 0.8,
+          color: '#22c55e', // Green
+          icon: '✓',
+          label: 'Trusted',
+          description: 'Highly reliable reporter'
+        },
+        neutral: {
+          minScore: 0.5,
+          color: '#f59e0b', // Yellow/Orange
+          icon: '⚠',
+          label: 'Unverified',
+          description: 'Average reliability'
+        },
+        unverified: {
+          minScore: 0,
+          color: '#9ca3af', // Gray
+          icon: '?',
+          label: 'Low Trust',
+          description: 'Unreliable or new reporter'
+        }
       },
-      neutral: {
-        minScore: 0.5,
-        color: '#f59e0b', // Yellow/Orange
-        icon: '⚠',
-        label: 'Unverified',
-        description: 'Average reliability'
-      },
-      unverified: {
-        minScore: 0,
-        color: '#9ca3af', // Gray
-        icon: '?',
-        label: 'Low Trust',
-        description: 'Unreliable or new reporter'
-      }
+      defaultScore: config.defaultScore || 0.5,
+      fakePenaltyMultiplier: config.fakePenaltyMultiplier || 1.0,
+      ...config
     };
+    
+    // Display tiers for reputation scores
+    this.tiers = this.config.tiers;
+    
+    // Default starting score for new users
+    this.defaultScore = this.config.defaultScore;
   }
 
   /**
@@ -40,7 +51,7 @@ class ReputationEngine {
    */
   calculateScore(userId, userRepData) {
     if (!userRepData || userRepData.total === 0) {
-      return 0.5; // New users start at neutral (50%)
+      return this.defaultScore; // New users start at neutral (50%)
     }
 
     // Formula: (confirmations - fakes) / total_posts

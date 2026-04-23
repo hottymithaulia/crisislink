@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import VoiceRecorder from './components/VoiceRecorder';
 import EventFeed from './components/EventFeed';
+import SystemStatus from './components/SystemStatus';
+import apiService from './api/api';
 import './App.css';
 
 function App() {
@@ -36,20 +38,12 @@ function App() {
   // Check backend status
   useEffect(() => {
     const checkBackend = async () => {
-      try {
-        const response = await fetch('http://localhost:3001/status');
-        if (response.ok) {
-          setBackendStatus('online');
-        } else {
-          setBackendStatus('offline');
-        }
-      } catch {
-        setBackendStatus('offline');
-      }
+      const isOnline = await apiService.isBackendOnline();
+      setBackendStatus(isOnline ? 'online' : 'offline');
     };
 
     checkBackend();
-    const interval = setInterval(checkBackend, 5000);
+    const interval = setInterval(checkBackend, 30000); // Check every 30 seconds
     return () => clearInterval(interval);
   }, []);
 
@@ -70,6 +64,8 @@ function App() {
       </header>
 
       <main className="app-main">
+        <SystemStatus />
+        
         {locationError && (
           <div className="location-warning">
             ⚠️ {locationError}

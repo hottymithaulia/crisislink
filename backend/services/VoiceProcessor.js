@@ -5,53 +5,60 @@
  */
 
 class VoiceProcessor {
-  constructor() {
+  constructor(config = {}) {
+    // Configuration injection
+    this.config = {
+      eventTypes: config.eventTypes || {
+        accident: [
+          'accident', 'crash', 'collision', 'hit', 'blocked', 'car', 'vehicle',
+          'traffic', 'pileup', 'wreck', 'fender bender', 'rear ended', 'side swiped'
+        ],
+        fire: [
+          'fire', 'burning', 'smoke', 'flames', 'burn', 'blaze', 'inferno',
+          'wildfire', 'house fire', 'building fire', 'explosion', 'combustion'
+        ],
+        medical: [
+          'injury', 'sick', 'help', 'ambulance', 'hurt', 'doctor', 'hospital',
+          'emergency', 'bleeding', 'unconscious', 'not breathing', 'heart attack',
+          'wound', 'pain', 'fainted', 'seizure', 'allergic', 'overdose'
+        ],
+        flood: [
+          'flood', 'water', 'drowning', 'wet', 'submerged', 'overflow',
+          'rising water', 'storm surge', 'flash flood', 'levee', 'dam break'
+        ],
+        police: [
+          'police', 'theft', 'robbery', 'stolen', 'crime', 'attack', 'violence',
+          'gun', 'shooter', 'assault', 'fight', 'disturbance', 'suspicious'
+        ],
+        hazmat: [
+          'chemical', 'gas leak', 'toxic', 'spill', 'radiation', 'hazardous',
+          'fumes', 'smell', 'odor', 'contamination'
+        ]
+      },
+      urgencyKeywords: config.urgencyKeywords || {
+        critical: [
+          'urgent', 'critical', 'dying', 'fire', 'help me', 'bleeding',
+          'unconscious', '911', 'dying', 'dead', 'life threatening', 'save me',
+          'trapped', 'cant breathe', 'dying', 'emergency', 'dying person'
+        ],
+        high: [
+          'accident', 'stuck', 'injured', 'hurt', 'pain', 'trapped',
+          'wounded', 'severe', 'serious', 'major', 'dangerous', 'scary',
+          'ambulance needed', 'hospital needed', 'police needed'
+        ],
+        medium: [
+          'issue', 'problem', 'alert', 'warning', 'concern', 'careful',
+          'watch out', 'be careful', 'potential', 'might be', 'looks like'
+        ]
+      },
+      ...config
+    };
+    
     // Event type keywords - maps keywords to incident types
-    this.eventTypes = {
-      accident: [
-        'accident', 'crash', 'collision', 'hit', 'blocked', 'car', 'vehicle',
-        'traffic', 'pileup', 'wreck', 'fender bender', 'rear ended', 'side swiped'
-      ],
-      fire: [
-        'fire', 'burning', 'smoke', 'flames', 'burn', 'blaze', 'inferno',
-        'wildfire', 'house fire', 'building fire', 'explosion', 'combustion'
-      ],
-      medical: [
-        'injury', 'sick', 'help', 'ambulance', 'hurt', 'doctor', 'hospital',
-        'emergency', 'bleeding', 'unconscious', 'not breathing', 'heart attack',
-        'wound', 'pain', 'fainted', 'seizure', 'allergic', 'overdose'
-      ],
-      flood: [
-        'flood', 'water', 'drowning', 'wet', 'submerged', 'overflow',
-        'rising water', 'storm surge', 'flash flood', 'levee', 'dam break'
-      ],
-      police: [
-        'police', 'theft', 'robbery', 'stolen', 'crime', 'attack', 'violence',
-        'gun', 'shooter', 'assault', 'fight', 'disturbance', 'suspicious'
-      ],
-      hazmat: [
-        'chemical', 'gas leak', 'toxic', 'spill', 'radiation', 'hazardous',
-        'fumes', 'smell', 'odor', 'contamination'
-      ]
-    };
-
+    this.eventTypes = this.config.eventTypes;
+    
     // Urgency level keywords
-    this.urgencyKeywords = {
-      critical: [
-        'urgent', 'critical', 'dying', 'fire', 'help me', 'bleeding',
-        'unconscious', '911', 'dying', 'dead', 'life threatening', 'save me',
-        'trapped', 'cant breathe', 'dying', 'emergency', 'dying person'
-      ],
-      high: [
-        'accident', 'stuck', 'injured', 'hurt', 'pain', 'trapped',
-        'wounded', 'severe', 'serious', 'major', 'dangerous', 'scary',
-        'ambulance needed', 'hospital needed', 'police needed'
-      ],
-      medium: [
-        'issue', 'problem', 'alert', 'warning', 'concern', 'careful',
-        'watch out', 'be careful', 'potential', 'might be', 'looks like'
-      ]
-    };
+    this.urgencyKeywords = this.config.urgencyKeywords;
   }
 
   /**

@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import EventCard from './EventCard';
+import apiService from '../api/api';
+import config from '../config/config';
 import '../styles/EventFeed.css';
 
 function EventFeed({ userLocation, backendStatus }) {
@@ -8,38 +10,17 @@ function EventFeed({ userLocation, backendStatus }) {
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // Fetch events immediately and every 3 seconds
-  useEffect(() => {
-    // Only fetch if backend is online
-    if (backendStatus === 'online') {
-      fetchNearbyEvents();
-      const interval = setInterval(fetchNearbyEvents, 3000);
-      return () => clearInterval(interval);
-    } else {
-      setLoading(false);
-      setEvents([]);
-    }
-  }, [userLocation, backendStatus]);
-
-  const fetchNearbyEvents = async () => {
+  const fetchNearbyEvents = useCallback(async () => {
     if (backendStatus !== 'online') return;
 
     try {
       const { lat, lon } = userLocation;
-      const radius = 5; // 5km radius
+      const radius = config.map.maxRadius;
       
-      const url = `http://localhost:3001/events/nearby?lat=${lat}&lon=${lon}&radius=${radius}`;
-      
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
+      const data = await apiService.getNearbyEvents(lat, lon, radius);
       
       if (data.success) {
-        setEvents(data.events);
+        setEvents(data.data.events);
         setLastUpdated(new Date());
         setError(null);
       } else {
@@ -52,7 +33,20 @@ function EventFeed({ userLocation, backendStatus }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [backendStatus, userLocation]);
+
+  // Fetch events immediately and every 3 seconds
+  useEffect(() => {
+    // Only fetch if backend is online
+    if (backendStatus === 'online') {
+      fetchNearbyEvents();
+      const interval = setInterval(fetchNearbyEvents, 3000);
+      return () => clearInterval(interval);
+    } else {
+      setLoading(false);
+      setEvents([]);
+    }
+  }, [userLocation, backendStatus, fetchNearbyEvents]);
 
   const handleConfirm = async (eventId) => {
     if (backendStatus !== 'online') {
@@ -61,17 +55,7 @@ function EventFeed({ userLocation, backendStatus }) {
     }
 
     try {
-      const userId = localStorage.getItem('crisislink_user_id') || 'anonymous';
-      
-      const response = await fetch(`http://localhost:3001/events/${eventId}/confirm`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ user_id: userId }),
-      });
-
-      const result = await response.json();
+      const result = await apiService.confirmEvent(eventId);
       
       if (result.success) {
         console.log(`✅ Confirmed event ${eventId}`);
@@ -94,17 +78,7 @@ function EventFeed({ userLocation, backendStatus }) {
     }
 
     try {
-      const userId = localStorage.getItem('crisislink_user_id') || 'anonymous';
-      
-      const response = await fetch(`http://localhost:3001/events/${eventId}/fake`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ user_id: userId }),
-      });
-
-      const result = await response.json();
+      const result = await apiService.reportFakeEvent(eventId);
       
       if (result.success) {
         console.log(`❌ Reported fake for event ${eventId}`);
