@@ -18,7 +18,7 @@ const MeshSimulator = require('../network/mesh.simulator');
 class CrisisLinkServer {
   constructor() {
     this.app = null;
-    this.server = null;
+    this.httpServer = null;
     this.services = {};
     this.escalationInterval = null;
   }
@@ -66,16 +66,18 @@ class CrisisLinkServer {
   }
 
   /**
-   * Create and configure Express app
+   * Create and configure Express app with WebSocket
    */
   createApp() {
-    this.app = createApp();
+    const { app, httpServer } = createApp();
+    this.app = app;
+    this.httpServer = httpServer;
     
     // Make services available to routes
     this.app.locals.services = this.services;
     this.app.locals.config = config;
 
-    console.log('🌐 Express app configured');
+    console.log('🌐 Express app configured with WebSocket support');
   }
 
   /**
@@ -94,11 +96,11 @@ class CrisisLinkServer {
       // Start escalation timer
       this.startEscalationTimer();
 
-      // Start HTTP server
+      // Start HTTP server (0.0.0.0 allows access from phones on hotspot)
       const port = config.server.port;
       const host = config.server.host;
 
-      this.server = this.app.listen(port, host, () => {
+      this.httpServer.listen(port, host, () => {
         console.log('');
         console.log('🎯 CrisisLink Server is running!');
         console.log(`📍 Server: http://${host}:${port}`);
@@ -122,6 +124,8 @@ class CrisisLinkServer {
       process.on('SIGTERM', () => this.shutdown());
       process.on('SIGINT', () => this.shutdown());
 
+      console.log(`📡 WebSocket server ready for real-time updates`);
+
     } catch (error) {
       console.error('❌ Failed to start server:', error);
       process.exit(1);
@@ -142,8 +146,8 @@ class CrisisLinkServer {
       this.services.eventStore.stopCleanupInterval();
     }
 
-    if (this.server) {
-      this.server.close(() => {
+    if (this.httpServer) {
+      this.httpServer.close(() => {
         console.log('✅ Server shut down gracefully');
         process.exit(0);
       });

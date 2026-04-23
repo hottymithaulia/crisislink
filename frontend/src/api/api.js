@@ -185,6 +185,69 @@ class ApiService {
     return await this.request('/health');
   }
 
+  /**
+   * Get connected devices count
+   */
+  async getConnectionsCount() {
+    return await this.request('/status/connections');
+  }
+
+  // ========== MESH NETWORK ENDPOINTS ==========
+
+  /**
+   * Get mesh network status from /mesh/status
+   */
+  async getMeshNetworkStatus() {
+    return await this.request('/mesh/status');
+  }
+
+  /**
+   * Get mesh network topology from /mesh/topology
+   */
+  async getMeshTopology() {
+    return await this.request('/mesh/topology');
+  }
+
+  /**
+   * Get all mesh nodes from /mesh/nodes
+   */
+  async getMeshNodes() {
+    return await this.request('/mesh/nodes');
+  }
+
+  /**
+   * Get specific mesh node details
+   */
+  async getMeshNode(nodeId) {
+    return await this.request(`/mesh/nodes/${nodeId}`);
+  }
+
+  /**
+   * Add a new mesh node
+   */
+  async addMeshNode(nodeData) {
+    return await this.request('/mesh/nodes', {
+      method: 'POST',
+      body: JSON.stringify(nodeData)
+    });
+  }
+
+  /**
+   * Get mesh network activity
+   */
+  async getMeshActivity(limit = 10) {
+    return await this.request(`/mesh/activity?limit=${limit}`);
+  }
+
+  /**
+   * Test mesh propagation
+   */
+  async testMeshPropagation() {
+    return await this.request('/mesh/test-propagation', {
+      method: 'POST'
+    });
+  }
+
   // ========== UTILITY METHODS ==========
 
   /**

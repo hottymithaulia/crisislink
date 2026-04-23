@@ -5,6 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
+const PingEvent = require('../services/PingEvent');
 
 function createEventsRoutes() {
   // POST /events - Create new incident
@@ -30,7 +31,6 @@ function createEventsRoutes() {
       const event_id = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
       // Create new PingEvent
-      const PingEvent = require('../services/PingEvent');
       const event = new PingEvent({
         id: event_id,
         type,
@@ -48,6 +48,24 @@ function createEventsRoutes() {
       // Log to mesh network
       services.meshSimulator.logEventCreation(event);
 
+      // Emit WebSocket event for real-time updates
+      const io = req.app.get('io');
+      if (io) {
+        // Get author's reputation for the WebSocket event
+        const userRep = services.eventStore.getUserReputation(event.user_id);
+        const reputation = services.reputationEngine.calculateScore(event.user_id, userRep);
+        const tier = services.reputationEngine.getDisplayTier(reputation);
+        
+        const eventWithRep = {
+          ...event.toJSON(),
+          reputation,
+          reputation_tier: tier
+        };
+        
+        io.emit('new_event', eventWithRep);
+        console.log(`📡 WebSocket: Broadcasted new event ${event.id}`);
+      }
+
       console.log(`📨 Received event from user: ${user_id} (${type}/${urgency})`);
 
       res.apiCreated({
@@ -56,7 +74,7 @@ function createEventsRoutes() {
         urgency: event.urgency,
         timestamp: event.timestamp,
         location: { lat: event.lat, lon: event.lon },
-        description: event.description
+        text: event.text
       }, 'Event created successfully');
 
     } catch (error) {
@@ -139,6 +157,24 @@ function createEventsRoutes() {
       // Log to mesh network
       services.meshSimulator.logEventConfirmation(event, user_id);
 
+      // Emit WebSocket event for real-time updates
+      const io = req.app.get('io');
+      if (io) {
+        // Get author's reputation for the WebSocket event
+        const userRep = services.eventStore.getUserReputation(event.user_id);
+        const reputation = services.reputationEngine.calculateScore(event.user_id, userRep);
+        const tier = services.reputationEngine.getDisplayTier(reputation);
+        
+        const eventWithRep = {
+          ...event.toJSON(),
+          reputation,
+          reputation_tier: tier
+        };
+        
+        io.emit('event_updated', eventWithRep);
+        console.log(`📡 WebSocket: Broadcasted event update ${event.id}`);
+      }
+
       console.log(`✅ Event ${id} confirmed by ${user_id}`);
 
       res.apiSuccess({
@@ -176,6 +212,24 @@ function createEventsRoutes() {
 
       // Log to mesh network
       services.meshSimulator.logEventFakeReport(event, user_id);
+
+      // Emit WebSocket event for real-time updates
+      const io = req.app.get('io');
+      if (io) {
+        // Get author's reputation for the WebSocket event
+        const userRep = services.eventStore.getUserReputation(event.user_id);
+        const reputation = services.reputationEngine.calculateScore(event.user_id, userRep);
+        const tier = services.reputationEngine.getDisplayTier(reputation);
+        
+        const eventWithRep = {
+          ...event.toJSON(),
+          reputation,
+          reputation_tier: tier
+        };
+        
+        io.emit('event_updated', eventWithRep);
+        console.log(`📡 WebSocket: Broadcasted event update ${event.id}`);
+      }
 
       console.log(`🚫 Event ${id} reported as fake by ${user_id}`);
 

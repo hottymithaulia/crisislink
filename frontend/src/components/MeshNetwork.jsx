@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import apiService from './api/api';
-import config from './config/config';
+import apiService from '../api/api';
 
 const MeshNetwork = () => {
   const [meshData, setMeshData] = useState({
@@ -24,10 +23,10 @@ const MeshNetwork = () => {
     try {
       setLoading(true);
       const [statusRes, topologyRes, nodesRes, activityRes] = await Promise.all([
-        apiService.get('/mesh/status'),
-        apiService.get('/mesh/topology'),
-        apiService.get('/mesh/nodes'),
-        apiService.get('/mesh/activity?limit=10')
+        apiService.getMeshNetworkStatus(),
+        apiService.getMeshTopology(),
+        apiService.getMeshNodes(),
+        apiService.getMeshActivity(10)
       ]);
 
       setMeshData({
@@ -47,7 +46,7 @@ const MeshNetwork = () => {
 
   const handleNodeClick = async (nodeId) => {
     try {
-      const nodeDetails = await apiService.get(`/mesh/nodes/${nodeId}`);
+      const nodeDetails = await apiService.getMeshNode(nodeId);
       setSelectedNode(nodeDetails.data);
     } catch (err) {
       console.error('Failed to fetch node details:', err);
@@ -67,7 +66,7 @@ const MeshNetwork = () => {
     };
 
     try {
-      await apiService.post('/mesh/nodes', newNode);
+      await apiService.addMeshNode(newNode);
       fetchMeshData(); // Refresh data
     } catch (err) {
       console.error('Failed to add node:', err);
@@ -76,7 +75,7 @@ const MeshNetwork = () => {
 
   const handleTestPropagation = async () => {
     try {
-      await apiService.post('/mesh/test-propagation');
+      await apiService.testMeshPropagation();
       fetchMeshData(); // Refresh data
     } catch (err) {
       console.error('Failed to test propagation:', err);

@@ -14,6 +14,7 @@ function SystemStatus() {
   const [lastChecked, setLastChecked] = useState(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [checkingEndpoints, setCheckingEndpoints] = useState(false);
+  const [connectedDevices, setConnectedDevices] = useState(0);
 
   // Check system status on mount and interval
   useEffect(() => {
@@ -21,6 +22,26 @@ function SystemStatus() {
     const interval = setInterval(checkSystemStatus, config.systemStatus.checkInterval);
     return () => clearInterval(interval);
   }, []);
+
+  // Check connected devices count every 3 seconds
+  useEffect(() => {
+    const checkConnections = async () => {
+      try {
+        const result = await apiService.getConnectionsCount();
+        if (result.success) {
+          setConnectedDevices(result.data.connectedDevices);
+        }
+      } catch (error) {
+        // Silently fail - this is not critical
+      }
+    };
+    
+    if (systemStatus === 'online') {
+      checkConnections();
+      const interval = setInterval(checkConnections, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [systemStatus]);
 
   /**
    * Check overall system status
@@ -131,6 +152,18 @@ function SystemStatus() {
             ▼
           </span>
         </div>
+        {/* Connected devices indicator */}
+        <div className="connections-indicator">
+          <span 
+            className={`connection-dot ${
+              connectedDevices > 1 ? 'green' : 
+              connectedDevices === 1 ? 'yellow' : 'gray'
+            }`}
+          ></span>
+          <span className="connection-text">
+            Connected devices: {connectedDevices}
+          </span>
+        </div>
       </div>
 
       {isExpanded && (
@@ -212,6 +245,10 @@ function SystemStatus() {
               <div className="info-item">
                 <span className="info-label">User ID:</span>
                 <span className="info-value user-id">{apiService.getUserId()}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-label">Connected Devices:</span>
+                <span className="info-value">{connectedDevices}</span>
               </div>
             </div>
           </div>

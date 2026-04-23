@@ -64,6 +64,17 @@ function App() {
         </div>
       </header>
 
+      {/* Development mode hotspot banner */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="hotspot-banner">
+          <span className="hotspot-icon">📱</span>
+          <span className="hotspot-text">
+            Connect your phone to this laptop's WiFi hotspot, then open{' '}
+            <code>http://192.168.137.1:3000</code> in your phone's browser
+          </span>
+        </div>
+      )}
+
       <main className="app-main">
         <SystemStatus />
         

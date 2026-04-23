@@ -5,9 +5,10 @@
 
 module.exports = {
   // Server Configuration
+  // NOTE: 0.0.0.0 is required for WiFi hotspot accessibility from phones
   server: {
     port: process.env.PORT || 3001,
-    host: process.env.HOST || 'localhost',
+    host: process.env.HOST || '0.0.0.0',
     cors: {
       origin: true, // Allow all origins in development
       credentials: true

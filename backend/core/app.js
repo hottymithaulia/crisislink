@@ -1,9 +1,11 @@
 /**
  * Express App Configuration
- * Sets up middleware, routes, and error handling
+ * Sets up middleware, routes, and error handling with WebSocket support
  */
 
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
@@ -20,6 +22,29 @@ const meshRoutes = require('../routes/mesh.routes');
 
 function createApp() {
   const app = express();
+  
+  // Create HTTP server and attach Socket.IO
+  const httpServer = http.createServer(app);
+  
+  // Initialize Socket.IO with CORS support for phones on hotspot
+  const io = new Server(httpServer, {
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST']
+    }
+  });
+  
+  // Store io instance on app for routes to access
+  app.set('io', io);
+  
+  // Socket.IO connection handling
+  io.on('connection', (socket) => {
+    console.log(`📱 WebSocket client connected: ${socket.id}`);
+    
+    socket.on('disconnect', () => {
+      console.log(`📱 WebSocket client disconnected: ${socket.id}`);
+    });
+  });
 
   // Security middleware
   app.use(helmet({
@@ -74,7 +99,7 @@ function createApp() {
     );
   });
 
-  return app;
+  return { app, httpServer };
 }
 
 module.exports = createApp;
