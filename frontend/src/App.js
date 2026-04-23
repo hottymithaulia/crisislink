@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import VoiceRecorder from './components/VoiceRecorder';
 import EventFeed from './components/EventFeed';
 import SystemStatus from './components/SystemStatus';
+import MeshNetwork from './components/MeshNetwork';
 import apiService from './api/api';
 import './App.css';
 
@@ -86,6 +87,8 @@ function App() {
           userLocation={userLocation} 
           backendStatus={backendStatus}
         />
+        
+        <MeshNetwork />
       </main>
 
       <footer className="app-footer">

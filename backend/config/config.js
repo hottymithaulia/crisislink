@@ -132,10 +132,14 @@ module.exports = {
   // Network Configuration
   network: {
     mesh: {
-      enabled: process.env.MESH_ENABLED === 'true',
+      enabled: process.env.MESH_ENABLED === 'true' || true, // Enable by default in development
       simulationMode: true,
-      maxHops: 5,
-      propagationDelayMs: 100
+      maxHops: 8,
+      propagationDelayMs: 100,
+      nodeTimeoutMs: 30000,
+      adaptiveRouting: true,
+      messageCompression: true,
+      batterySimulation: true
     }
   },
 

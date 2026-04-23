@@ -16,6 +16,7 @@ const config = require('../config/config');
 const eventsRoutes = require('../routes/events.routes');
 const voiceRoutes = require('../routes/voice.routes');
 const statusRoutes = require('../routes/status.routes');
+const meshRoutes = require('../routes/mesh.routes');
 
 function createApp() {
   const app = express();
@@ -55,6 +56,7 @@ function createApp() {
   app.use('/events', eventsRoutes);
   app.use('/voice', voiceRoutes);
   app.use('/status', statusRoutes);
+  app.use('/mesh', meshRoutes);
 
   // 404 handler
   app.use('*', (req, res) => {
