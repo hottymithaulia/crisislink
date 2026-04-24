@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import apiService from '../api/api';
+import socketService from '../services/socket';
 import config from '../config/config';
 import './SystemStatus.css';
 
@@ -15,6 +16,7 @@ function SystemStatus() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [checkingEndpoints, setCheckingEndpoints] = useState(false);
   const [connectedDevices, setConnectedDevices] = useState(0);
+  const [socketConnected, setSocketConnected] = useState(false);
 
   // Check system status on mount and interval
   useEffect(() => {
@@ -23,25 +25,33 @@ function SystemStatus() {
     return () => clearInterval(interval);
   }, []);
 
-  // Check connected devices count every 3 seconds
+  // WebSocket connection for real-time connection count
   useEffect(() => {
-    const checkConnections = async () => {
-      try {
-        const result = await apiService.getConnectionsCount();
-        if (result.success) {
-          setConnectedDevices(result.data.connectedDevices);
-        }
-      } catch (error) {
-        // Silently fail - this is not critical
-      }
+    const socket = socketService.connect();
+
+    socketService.on('connect', () => {
+      console.log('🔌 SystemStatus WebSocket connected');
+      setSocketConnected(true);
+    });
+
+    socketService.on('disconnect', (reason) => {
+      console.log('🔌 SystemStatus WebSocket disconnected:', reason);
+      setSocketConnected(false);
+    });
+
+    // Receive connection count updates
+    socketService.on('connectionCountUpdate', (data) => {
+      console.log('📡 Connection count update:', data.connectedDevices);
+      setConnectedDevices(data.connectedDevices);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socketService.off('connect');
+      socketService.off('disconnect');
+      socketService.off('connectionCountUpdate');
     };
-    
-    if (systemStatus === 'online') {
-      checkConnections();
-      const interval = setInterval(checkConnections, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [systemStatus]);
+  }, []);
 
   /**
    * Check overall system status

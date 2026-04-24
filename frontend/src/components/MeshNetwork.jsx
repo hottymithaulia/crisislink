@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import apiService from '../api/api';
+import socketService from '../services/socket';
 
 const MeshNetwork = () => {
   const [meshData, setMeshData] = useState({
@@ -11,36 +12,86 @@ const MeshNetwork = () => {
   const [selectedNode, setSelectedNode] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [socketConnected, setSocketConnected] = useState(false);
 
-  // Fetch mesh network data
+  // WebSocket connection for real-time mesh data
   useEffect(() => {
-    fetchMeshData();
-    const interval = setInterval(fetchMeshData, 5000); // Update every 5 seconds
-    return () => clearInterval(interval);
+    const socket = socketService.connect();
+
+    socketService.on('connect', () => {
+      console.log('🔌 MeshNetwork WebSocket connected');
+      setSocketConnected(true);
+      setLoading(false);
+      setError(null);
+    });
+
+    socketService.on('disconnect', (reason) => {
+      console.log('🔌 MeshNetwork WebSocket disconnected:', reason);
+      setSocketConnected(false);
+    });
+
+    // Receive initial mesh state on connection
+    socketService.on('meshInitialState', (initialData) => {
+      console.log('📡 Received initial mesh state');
+      setMeshData({
+        status: initialData.status,
+        topology: initialData.topology,
+        nodes: initialData.nodes,
+        activity: initialData.activity
+      });
+      setLoading(false);
+      setError(null);
+    });
+
+    // Receive mesh data updates
+    socketService.on('meshDataUpdate', (updatedData) => {
+      console.log('📡 Received mesh data update');
+      setMeshData({
+        status: updatedData.status,
+        topology: updatedData.topology,
+        nodes: updatedData.nodes,
+        activity: updatedData.activity
+      });
+      setError(null);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socketService.off('connect');
+      socketService.off('disconnect');
+      socketService.off('meshInitialState');
+      socketService.off('meshDataUpdate');
+    };
   }, []);
 
   const fetchMeshData = async () => {
-    try {
-      setLoading(true);
-      const [statusRes, topologyRes, nodesRes, activityRes] = await Promise.all([
-        apiService.getMeshNetworkStatus(),
-        apiService.getMeshTopology(),
-        apiService.getMeshNodes(),
-        apiService.getMeshActivity(10)
-      ]);
+    // Use WebSocket to request fresh data
+    if (socketService.isConnected()) {
+      socketService.emit('requestMeshData');
+    } else {
+      // Fallback to HTTP if WebSocket not connected
+      try {
+        setLoading(true);
+        const [statusRes, topologyRes, nodesRes, activityRes] = await Promise.all([
+          apiService.getMeshNetworkStatus(),
+          apiService.getMeshTopology(),
+          apiService.getMeshNodes(),
+          apiService.getMeshActivity(10)
+        ]);
 
-      setMeshData({
-        status: statusRes.data,
-        topology: topologyRes.data,
-        nodes: nodesRes.data,
-        activity: activityRes.data
-      });
-      setError(null);
-    } catch (err) {
-      setError('Failed to fetch mesh network data');
-      console.error('Mesh data fetch error:', err);
-    } finally {
-      setLoading(false);
+        setMeshData({
+          status: statusRes.data,
+          topology: topologyRes.data,
+          nodes: nodesRes.data,
+          activity: activityRes.data
+        });
+        setError(null);
+      } catch (err) {
+        setError('Failed to fetch mesh network data');
+        console.error('Mesh data fetch error:', err);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 

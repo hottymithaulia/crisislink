@@ -14,9 +14,11 @@ class ApiService {
   }
 
   /**
-   * Make HTTP request with retry logic
+   * Make HTTP request with retry logic (exponential backoff, max 3 attempts)
    */
   async request(endpoint, options = {}) {
+    const maxRetries = options.maxRetries || 3;
+    const retryCount = options.retryCount || 0;
     const url = `${this.baseUrl}${endpoint}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -47,11 +49,12 @@ class ApiService {
         throw new Error('Request timeout');
       }
 
-      // Retry logic
-      if (options.retry !== false && this.retryAttempts > 0) {
-        console.warn(`API request failed, retrying... (${error.message})`);
-        await new Promise(resolve => setTimeout(resolve, this.retryDelay));
-        return this.request(endpoint, { ...options, retry: false });
+      // Retry logic with exponential backoff
+      if (options.retry !== false && retryCount < maxRetries) {
+        const backoffDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5s backoff
+        console.warn(`API request failed (attempt ${retryCount + 1}/${maxRetries}), retrying in ${backoffDelay}ms... (${error.message})`);
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        return this.request(endpoint, { ...options, retryCount: retryCount + 1, maxRetries });
       }
 
       throw error;

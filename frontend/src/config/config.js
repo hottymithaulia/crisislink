@@ -6,8 +6,8 @@
 const config = {
   // API Configuration
   api: {
-    baseUrl: process.env.REACT_APP_API_URL || 'http://192.168.137.1:3001',
-    wsUrl: process.env.REACT_APP_WS_URL || 'http://192.168.137.1:3001', // WebSocket server URL - MUST be laptop's hotspot IP for phone connectivity
+    baseUrl: process.env.REACT_APP_API_URL || 'http://192.168.1.6:3001',
+    wsUrl: process.env.REACT_APP_WS_URL || 'http://192.168.1.6:3001', // WebSocket server URL - MUST be laptop's hotspot IP for phone connectivity
     timeout: 15000, // 15 seconds
     retryAttempts: 2,
     retryDelay: 2000 // 2 seconds

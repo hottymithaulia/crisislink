@@ -37,12 +37,145 @@ function createApp() {
   // Store io instance on app for routes to access
   app.set('io', io);
   
+  // Track devices by deviceId instead of socket.id
+  // Map: deviceId -> Set of socket connections
+  const deviceConnections = new Map();
+  
+  // Get unique device count
+  const getDeviceCount = () => deviceConnections.size;
+  
   // Socket.IO connection handling
   io.on('connection', (socket) => {
-    console.log(`📱 WebSocket client connected: ${socket.id}`);
+    const deviceId = socket.handshake.query.deviceId;
+    console.log(`📱 WebSocket client connected: ${socket.id}, Device: ${deviceId}`);
+    
+    // Track device connection
+    if (!deviceConnections.has(deviceId)) {
+      deviceConnections.set(deviceId, new Set());
+    }
+    deviceConnections.get(deviceId).add(socket.id);
+    
+    // Broadcast updated device count to all clients
+    const connectedDevices = getDeviceCount();
+    io.emit('connectionCountUpdate', { connectedDevices });
+    console.log(`📊 Device count updated: ${connectedDevices}`);
+    
+    // Send initial state on connection
+    const sendInitialState = async () => {
+      try {
+        const services = httpServer.services;
+        const meshSimulator = services?.meshSimulator;
+        
+        // Send mesh data if enabled
+        if (meshSimulator && meshSimulator.config.enabled) {
+          const meshStatus = {
+            enabled: true,
+            statistics: meshSimulator.getStatistics(),
+            topology: meshSimulator.getNetworkTopology(),
+            nodes: Array.from(meshSimulator.nodes.values()).map(node => ({
+              id: node.id,
+              name: node.name,
+              type: node.type,
+              status: node.status,
+              battery: node.battery,
+              load: node.load,
+              reputation: node.reputation,
+              eventCount: node.events.size,
+              connections: node.connections.length,
+              bandwidth: node.bandwidth,
+              range: node.range,
+              lastSeen: node.lastSeen
+            })),
+            activity: meshSimulator.getRecentActivity(10)
+          };
+          socket.emit('meshInitialState', meshStatus);
+        }
+      } catch (error) {
+        console.error('Error sending initial state:', error);
+      }
+    };
+    
+    sendInitialState();
+    
+    // Handle mesh data requests
+    socket.on('requestMeshData', async () => {
+      try {
+        const services = httpServer.services;
+        const meshSimulator = services?.meshSimulator;
+        
+        if (meshSimulator && meshSimulator.config.enabled) {
+          const meshData = {
+            status: {
+              enabled: true,
+              statistics: meshSimulator.getStatistics(),
+              config: {
+                adaptiveRouting: meshSimulator.config.adaptiveRouting,
+                messageCompression: meshSimulator.config.messageCompression,
+                batterySimulation: meshSimulator.config.batterySimulation
+              }
+            },
+            topology: meshSimulator.getNetworkTopology(),
+            nodes: Array.from(meshSimulator.nodes.values()).map(node => ({
+              id: node.id,
+              name: node.name,
+              type: node.type,
+              status: node.status,
+              battery: node.battery,
+              load: node.load,
+              reputation: node.reputation,
+              eventCount: node.events.size,
+              connections: node.connections.length,
+              bandwidth: node.bandwidth,
+              range: node.range,
+              lastSeen: node.lastSeen
+            })),
+            activity: meshSimulator.getRecentActivity(10)
+          };
+          socket.emit('meshDataUpdate', meshData);
+        }
+      } catch (error) {
+        console.error('Error sending mesh data:', error);
+      }
+    });
+
+    // Handle nearby events requests
+    socket.on('requestNearbyEvents', async (data) => {
+      try {
+        const services = httpServer.services;
+        const eventStore = services?.eventStore;
+        
+        if (eventStore) {
+          const { lat, lon, radius = 5 } = data;
+          const nearbyEvents = eventStore.getNearbyEvents(lat, lon, radius);
+          
+          socket.emit('initialEvents', {
+            events: nearbyEvents.map(event => event.toJSON()),
+            count: nearbyEvents.length
+          });
+        }
+      } catch (error) {
+        console.error('Error sending nearby events:', error);
+        socket.emit('initialEvents', { events: [], count: 0 });
+      }
+    });
     
     socket.on('disconnect', () => {
-      console.log(`📱 WebSocket client disconnected: ${socket.id}`);
+      console.log(`📱 WebSocket client disconnected: ${socket.id}, Device: ${deviceId}`);
+      
+      // Remove socket from device connections
+      if (deviceConnections.has(deviceId)) {
+        deviceConnections.get(deviceId).delete(socket.id);
+        
+        // If no more connections for this device, remove device entry
+        if (deviceConnections.get(deviceId).size === 0) {
+          deviceConnections.delete(deviceId);
+        }
+      }
+      
+      // Broadcast updated device count
+      const connectedDevices = getDeviceCount();
+      io.emit('connectionCountUpdate', { connectedDevices });
+      console.log(`📊 Device count updated: ${connectedDevices}`);
     });
   });
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { io } from 'socket.io-client';
 import EventCard from './EventCard';
 import apiService from '../api/api';
+import socketService from '../services/socket';
 import config from '../config/config';
 import '../styles/EventFeed.css';
 
@@ -37,30 +37,36 @@ function EventFeed({ userLocation, backendStatus }) {
     }
   }, [backendStatus, userLocation]);
 
-  // Fetch events immediately on mount, then set up WebSocket for real-time updates
-  useEffect(() => {
-    // Initial load of events
-    if (backendStatus === 'online') {
-      fetchNearbyEvents();
-    } else {
-      setLoading(false);
-      setEvents([]);
-    }
-    
-    // Set up WebSocket connection for real-time updates
-    if (backendStatus === 'online') {
-      const socket = io(config.api.wsUrl);
-      
-      socket.on('connect', () => {
-        console.log('🔌 WebSocket connected');
+  // Request initial events via WebSocket
+  const requestInitialEvents = useCallback(() => {
+    if (backendStatus === 'online' && userLocation?.lat && userLocation?.lon) {
+      socketService.emit('requestNearbyEvents', {
+        lat: userLocation.lat,
+        lon: userLocation.lon,
+        radius: config.map.maxRadius
       });
+    }
+  }, [backendStatus, userLocation]);
+
+  // Set up WebSocket connection for real-time updates
+  useEffect(() => {
+    if (backendStatus === 'online') {
+      const socket = socketService.connect();
       
-      socket.on('disconnect', () => {
-        console.log('🔌 WebSocket disconnected');
+      // Request initial events on connection
+      requestInitialEvents();
+      
+      // Listen for initial events response
+      socketService.on('initialEvents', (data) => {
+        console.log('� Received initial events:', data.events.length);
+        setEvents(data.events);
+        setLastUpdated(new Date());
+        setLoading(false);
+        setError(null);
       });
       
       // Listen for new events and add to feed
-      socket.on('new_event', (newEvent) => {
+      socketService.on('new_event', (newEvent) => {
         console.log('📡 WebSocket received new event:', newEvent.id);
         setEvents(prevEvents => {
           // Prevent duplicates
@@ -74,7 +80,7 @@ function EventFeed({ userLocation, backendStatus }) {
       });
       
       // Listen for event updates (confirm/fake)
-      socket.on('event_updated', (updatedEvent) => {
+      socketService.on('event_updated', (updatedEvent) => {
         console.log('📡 WebSocket received event update:', updatedEvent.id);
         setEvents(prevEvents => {
           return prevEvents.map(event => 
@@ -86,10 +92,15 @@ function EventFeed({ userLocation, backendStatus }) {
       
       // Cleanup WebSocket on unmount
       return () => {
-        socket.disconnect();
+        socketService.off('initialEvents');
+        socketService.off('new_event');
+        socketService.off('event_updated');
       };
+    } else {
+      setLoading(false);
+      setEvents([]);
     }
-  }, [userLocation, backendStatus, fetchNearbyEvents]);
+  }, [backendStatus, userLocation, requestInitialEvents]);
 
   const handleConfirm = async (eventId) => {
     if (backendStatus !== 'online') {

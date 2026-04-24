@@ -37,6 +37,33 @@
   font-size: 0.8rem;
 }
 
+.connection-pill {
+  margin-left: 10px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.connection-pill.green {
+  background: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.5);
+}
+
+.connection-pill.yellow {
+  background: rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+}
+
+.connection-pill.gray {
+  background: rgba(156, 163, 175, 0.3);
+  color: #9ca3af;
+  border: 1px solid rgba(156, 163, 175, 0.5);
+}
+
 /* Header */
 .app-header {
   background: rgba(0, 0, 0, 0.3);

@@ -4,6 +4,8 @@ import EventFeed from './components/EventFeed';
 import SystemStatus from './components/SystemStatus';
 import MeshNetwork from './components/MeshNetwork';
 import apiService from './api/api';
+import socketService from './services/socket';
+import config from './config/config';
 import './App.css';
 
 function App() {
@@ -13,6 +15,7 @@ function App() {
   });
   const [locationError, setLocationError] = useState(null);
   const [backendStatus, setBackendStatus] = useState('checking');
+  const [connectedDevices, setConnectedDevices] = useState(0);
 
   // Get user's location on mount
   useEffect(() => {
@@ -48,6 +51,22 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // WebSocket connection for real-time connection count
+  useEffect(() => {
+    const socket = socketService.connect();
+
+    // Receive connection count updates
+    socketService.on('connectionCountUpdate', (data) => {
+      console.log('📡 Connection count update:', data.connectedDevices);
+      setConnectedDevices(data.connectedDevices);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socketService.off('connectionCountUpdate');
+    };
+  }, []);
+
   const handleEventPosted = (newEvent) => {
     console.log('✅ Event posted:', newEvent);
   };
@@ -64,16 +83,21 @@ function App() {
         </div>
       </header>
 
-      {/* Development mode hotspot banner */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="hotspot-banner">
-          <span className="hotspot-icon">📱</span>
-          <span className="hotspot-text">
-            Connect your phone to this laptop's WiFi hotspot, then open{' '}
-            <code>http://192.168.137.1:3000</code> in your phone's browser
+      {/* Connection banner - always visible */}
+      <div className="hotspot-banner">
+        <span className="hotspot-icon">📱</span>
+        <span className="hotspot-text">
+          Share: <code>http://{window.location.hostname}:3000</code>
+          <span className={`connection-pill ${
+            connectedDevices > 1 ? 'green' : 
+            connectedDevices === 1 ? 'yellow' : 'gray'
+          }`}>
+            {connectedDevices > 1 ? `${connectedDevices} devices — mesh active` : 
+             connectedDevices === 1 ? '1 device — waiting for others' : 
+             'No devices connected'}
           </span>
-        </div>
-      )}
+        </span>
+      </div>
 
       <main className="app-main">
         <SystemStatus />
