@@ -19,7 +19,7 @@ class PingEvent {
     // Incident classification
     this.type = data.type || 'incident';
     this.urgency = data.urgency || 'low';
-    this.text = data.text || '';
+    this.text = data.text || data.description || '';
     
     // Location data
     this.lat = data.lat || 0;

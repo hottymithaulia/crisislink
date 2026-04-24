@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import apiService from '../api/api';
+import socketService from '../services/socket';
 import config from '../config/config';
 import './SystemStatus.css';
 
@@ -14,12 +15,42 @@ function SystemStatus() {
   const [lastChecked, setLastChecked] = useState(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [checkingEndpoints, setCheckingEndpoints] = useState(false);
+  const [connectedDevices, setConnectedDevices] = useState(0);
+  const [socketConnected, setSocketConnected] = useState(false);
 
   // Check system status on mount and interval
   useEffect(() => {
     checkSystemStatus();
     const interval = setInterval(checkSystemStatus, config.systemStatus.checkInterval);
     return () => clearInterval(interval);
+  }, []);
+
+  // WebSocket connection for real-time connection count
+  useEffect(() => {
+    const socket = socketService.connect();
+
+    socketService.on('connect', () => {
+      console.log('🔌 SystemStatus WebSocket connected');
+      setSocketConnected(true);
+    });
+
+    socketService.on('disconnect', (reason) => {
+      console.log('🔌 SystemStatus WebSocket disconnected:', reason);
+      setSocketConnected(false);
+    });
+
+    // Receive connection count updates
+    socketService.on('connectionCountUpdate', (data) => {
+      console.log('📡 Connection count update:', data.connectedDevices);
+      setConnectedDevices(data.connectedDevices);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socketService.off('connect');
+      socketService.off('disconnect');
+      socketService.off('connectionCountUpdate');
+    };
   }, []);
 
   /**
@@ -131,6 +162,18 @@ function SystemStatus() {
             ▼
           </span>
         </div>
+        {/* Connected devices indicator */}
+        <div className="connections-indicator">
+          <span 
+            className={`connection-dot ${
+              connectedDevices > 1 ? 'green' : 
+              connectedDevices === 1 ? 'yellow' : 'gray'
+            }`}
+          ></span>
+          <span className="connection-text">
+            Connected devices: {connectedDevices}
+          </span>
+        </div>
       </div>
 
       {isExpanded && (
@@ -212,6 +255,10 @@ function SystemStatus() {
               <div className="info-item">
                 <span className="info-label">User ID:</span>
                 <span className="info-value user-id">{apiService.getUserId()}</span>
+              </div>
+              <div className="info-item">
+                <span className="info-label">Connected Devices:</span>
+                <span className="info-value">{connectedDevices}</span>
               </div>
             </div>
           </div>

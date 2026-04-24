@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import EventCard from './EventCard';
 import apiService from '../api/api';
+import socketService from '../services/socket';
 import config from '../config/config';
 import '../styles/EventFeed.css';
 
@@ -12,6 +13,7 @@ function EventFeed({ userLocation, backendStatus }) {
 
   const fetchNearbyEvents = useCallback(async () => {
     if (backendStatus !== 'online') return;
+    if (!userLocation?.lat || !userLocation?.lon) return;
 
     try {
       const { lat, lon } = userLocation;
@@ -35,18 +37,70 @@ function EventFeed({ userLocation, backendStatus }) {
     }
   }, [backendStatus, userLocation]);
 
-  // Fetch events immediately and every 3 seconds
+  // Request initial events via WebSocket
+  const requestInitialEvents = useCallback(() => {
+    if (backendStatus === 'online' && userLocation?.lat && userLocation?.lon) {
+      socketService.emit('requestNearbyEvents', {
+        lat: userLocation.lat,
+        lon: userLocation.lon,
+        radius: config.map.maxRadius
+      });
+    }
+  }, [backendStatus, userLocation]);
+
+  // Set up WebSocket connection for real-time updates
   useEffect(() => {
-    // Only fetch if backend is online
     if (backendStatus === 'online') {
-      fetchNearbyEvents();
-      const interval = setInterval(fetchNearbyEvents, 3000);
-      return () => clearInterval(interval);
+      const socket = socketService.connect();
+      
+      // Request initial events on connection
+      requestInitialEvents();
+      
+      // Listen for initial events response
+      socketService.on('initialEvents', (data) => {
+        console.log('� Received initial events:', data.events.length);
+        setEvents(data.events);
+        setLastUpdated(new Date());
+        setLoading(false);
+        setError(null);
+      });
+      
+      // Listen for new events and add to feed
+      socketService.on('new_event', (newEvent) => {
+        console.log('📡 WebSocket received new event:', newEvent.id);
+        setEvents(prevEvents => {
+          // Prevent duplicates
+          if (prevEvents.some(e => e.id === newEvent.id)) {
+            return prevEvents;
+          }
+          // Add new event at the top (newest first)
+          return [newEvent, ...prevEvents];
+        });
+        setLastUpdated(new Date());
+      });
+      
+      // Listen for event updates (confirm/fake)
+      socketService.on('event_updated', (updatedEvent) => {
+        console.log('📡 WebSocket received event update:', updatedEvent.id);
+        setEvents(prevEvents => {
+          return prevEvents.map(event => 
+            event.id === updatedEvent.id ? updatedEvent : event
+          );
+        });
+        setLastUpdated(new Date());
+      });
+      
+      // Cleanup WebSocket on unmount
+      return () => {
+        socketService.off('initialEvents');
+        socketService.off('new_event');
+        socketService.off('event_updated');
+      };
     } else {
       setLoading(false);
       setEvents([]);
     }
-  }, [userLocation, backendStatus, fetchNearbyEvents]);
+  }, [backendStatus, userLocation, requestInitialEvents]);
 
   const handleConfirm = async (eventId) => {
     if (backendStatus !== 'online') {
@@ -59,8 +113,7 @@ function EventFeed({ userLocation, backendStatus }) {
       
       if (result.success) {
         console.log(`✅ Confirmed event ${eventId}`);
-        // Refresh events
-        fetchNearbyEvents();
+        // WebSocket will update the event automatically
       } else {
         throw new Error(result.error || 'Failed to confirm');
       }
@@ -82,7 +135,7 @@ function EventFeed({ userLocation, backendStatus }) {
       
       if (result.success) {
         console.log(`❌ Reported fake for event ${eventId}`);
-        fetchNearbyEvents();
+        // WebSocket will update the event automatically
       } else {
         throw new Error(result.error || 'Failed to report fake');
       }

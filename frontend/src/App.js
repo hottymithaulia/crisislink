@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import VoiceRecorder from './components/VoiceRecorder';
 import EventFeed from './components/EventFeed';
 import SystemStatus from './components/SystemStatus';
+import MeshNetwork from './components/MeshNetwork';
 import apiService from './api/api';
+import socketService from './services/socket';
+import config from './config/config';
 import './App.css';
 
 function App() {
@@ -12,6 +15,7 @@ function App() {
   });
   const [locationError, setLocationError] = useState(null);
   const [backendStatus, setBackendStatus] = useState('checking');
+  const [connectedDevices, setConnectedDevices] = useState(0);
 
   // Get user's location on mount
   useEffect(() => {
@@ -47,6 +51,22 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // WebSocket connection for real-time connection count
+  useEffect(() => {
+    const socket = socketService.connect();
+
+    // Receive connection count updates
+    socketService.on('connectionCountUpdate', (data) => {
+      console.log('📡 Connection count update:', data.connectedDevices);
+      setConnectedDevices(data.connectedDevices);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socketService.off('connectionCountUpdate');
+    };
+  }, []);
+
   const handleEventPosted = (newEvent) => {
     console.log('✅ Event posted:', newEvent);
   };
@@ -62,6 +82,22 @@ function App() {
           </div>
         </div>
       </header>
+
+      {/* Connection banner - always visible */}
+      <div className="hotspot-banner">
+        <span className="hotspot-icon">📱</span>
+        <span className="hotspot-text">
+          Share: <code>http://{window.location.hostname}:3000</code>
+          <span className={`connection-pill ${
+            connectedDevices > 1 ? 'green' : 
+            connectedDevices === 1 ? 'yellow' : 'gray'
+          }`}>
+            {connectedDevices > 1 ? `${connectedDevices} devices — mesh active` : 
+             connectedDevices === 1 ? '1 device — waiting for others' : 
+             'No devices connected'}
+          </span>
+        </span>
+      </div>
 
       <main className="app-main">
         <SystemStatus />
@@ -86,6 +122,8 @@ function App() {
           userLocation={userLocation} 
           backendStatus={backendStatus}
         />
+        
+        <MeshNetwork />
       </main>
 
       <footer className="app-footer">

@@ -151,6 +151,22 @@ function createStatusRoutes() {
     }
   });
 
+  // GET /status/connections - WebSocket connections count
+  router.get('/connections', async (req, res) => {
+    try {
+      const io = req.app.get('io');
+      const count = io?.engine?.clientsCount ?? 0;
+
+      res.apiSuccess({
+        connectedDevices: count
+      }, 'Connection count retrieved successfully');
+
+    } catch (error) {
+      console.error('Error fetching connection count:', error);
+      res.apiError('Failed to fetch connection count', 500);
+    }
+  });
+
   return router;
 }
 

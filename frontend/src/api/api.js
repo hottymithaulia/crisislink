@@ -14,9 +14,11 @@ class ApiService {
   }
 
   /**
-   * Make HTTP request with retry logic
+   * Make HTTP request with retry logic (exponential backoff, max 3 attempts)
    */
   async request(endpoint, options = {}) {
+    const maxRetries = options.maxRetries || 3;
+    const retryCount = options.retryCount || 0;
     const url = `${this.baseUrl}${endpoint}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -47,11 +49,12 @@ class ApiService {
         throw new Error('Request timeout');
       }
 
-      // Retry logic
-      if (options.retry !== false && this.retryAttempts > 0) {
-        console.warn(`API request failed, retrying... (${error.message})`);
-        await new Promise(resolve => setTimeout(resolve, this.retryDelay));
-        return this.request(endpoint, { ...options, retry: false });
+      // Retry logic with exponential backoff
+      if (options.retry !== false && retryCount < maxRetries) {
+        const backoffDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5s backoff
+        console.warn(`API request failed (attempt ${retryCount + 1}/${maxRetries}), retrying in ${backoffDelay}ms... (${error.message})`);
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        return this.request(endpoint, { ...options, retryCount: retryCount + 1, maxRetries });
       }
 
       throw error;
@@ -183,6 +186,69 @@ class ApiService {
    */
   async healthCheck() {
     return await this.request('/health');
+  }
+
+  /**
+   * Get connected devices count
+   */
+  async getConnectionsCount() {
+    return await this.request('/status/connections');
+  }
+
+  // ========== MESH NETWORK ENDPOINTS ==========
+
+  /**
+   * Get mesh network status from /mesh/status
+   */
+  async getMeshNetworkStatus() {
+    return await this.request('/mesh/status');
+  }
+
+  /**
+   * Get mesh network topology from /mesh/topology
+   */
+  async getMeshTopology() {
+    return await this.request('/mesh/topology');
+  }
+
+  /**
+   * Get all mesh nodes from /mesh/nodes
+   */
+  async getMeshNodes() {
+    return await this.request('/mesh/nodes');
+  }
+
+  /**
+   * Get specific mesh node details
+   */
+  async getMeshNode(nodeId) {
+    return await this.request(`/mesh/nodes/${nodeId}`);
+  }
+
+  /**
+   * Add a new mesh node
+   */
+  async addMeshNode(nodeData) {
+    return await this.request('/mesh/nodes', {
+      method: 'POST',
+      body: JSON.stringify(nodeData)
+    });
+  }
+
+  /**
+   * Get mesh network activity
+   */
+  async getMeshActivity(limit = 10) {
+    return await this.request(`/mesh/activity?limit=${limit}`);
+  }
+
+  /**
+   * Test mesh propagation
+   */
+  async testMeshPropagation() {
+    return await this.request('/mesh/test-propagation', {
+      method: 'POST'
+    });
   }
 
   // ========== UTILITY METHODS ==========

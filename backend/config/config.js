@@ -5,9 +5,10 @@
 
 module.exports = {
   // Server Configuration
+  // NOTE: 0.0.0.0 is required for WiFi hotspot accessibility from phones
   server: {
     port: process.env.PORT || 3001,
-    host: process.env.HOST || 'localhost',
+    host: process.env.HOST || '0.0.0.0',
     cors: {
       origin: true, // Allow all origins in development
       credentials: true
@@ -132,10 +133,14 @@ module.exports = {
   // Network Configuration
   network: {
     mesh: {
-      enabled: process.env.MESH_ENABLED === 'true',
+      enabled: process.env.MESH_ENABLED === 'true' || true, // Enable by default in development
       simulationMode: true,
-      maxHops: 5,
-      propagationDelayMs: 100
+      maxHops: 8,
+      propagationDelayMs: 100,
+      nodeTimeoutMs: 30000,
+      adaptiveRouting: true,
+      messageCompression: true,
+      batterySimulation: true
     }
   },
 
@@ -144,8 +149,8 @@ module.exports = {
     version: 'v1',
     prefix: '/api',
     rateLimit: {
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100 // limit each IP to 100 requests per windowMs
+      windowMs: 1 * 60 * 1000, // 1 minute
+      max: 500 // limit each IP to 500 requests per windowMs
     }
   },
 

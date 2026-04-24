@@ -1,0 +1,503 @@
+/* Mesh Network Component Styles */
+.mesh-network {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.mesh-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.mesh-header h3 {
+  margin: 0;
+  color: #1e293b;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.mesh-controls {
+  display: flex;
+  gap: 10px;
+}
+
+.mesh-controls button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.add-node-btn {
+  background: #22c55e;
+  color: white;
+}
+
+.add-node-btn:hover {
+  background: #16a34a;
+}
+
+.test-btn {
+  background: #3b82f6;
+  color: white;
+}
+
+.test-btn:hover {
+  background: #2563eb;
+}
+
+.refresh-btn {
+  background: #f59e0b;
+  color: white;
+}
+
+.refresh-btn:hover {
+  background: #d97706;
+}
+
+/* Status Overview */
+.mesh-status {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.status-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.status-label {
+  font-size: 0.875rem;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.status-value {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.status-value.enabled {
+  color: #22c55e;
+}
+
+.status-value.disabled {
+  color: #ef4444;
+}
+
+.feature-flags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.flag {
+  background: #f1f5f9;
+  color: #475569;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Network Visualization */
+.network-visualization {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.network-visualization h4 {
+  margin: 0 0 15px 0;
+  color: #1e293b;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.topology-map {
+  position: relative;
+  height: 400px;
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  border: 2px solid #cbd5e1;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.nodes-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.node {
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  transform: translate(-50%, -50%);
+  border: 2px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.node:hover {
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+}
+
+.node.selected {
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 0 0 3px #3b82f6, 0 4px 12px rgba(59, 130, 246, 0.4);
+  z-index: 20;
+}
+
+.node.inactive {
+  opacity: 0.5;
+}
+
+.node-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.node-label {
+  font-size: 8px;
+  font-weight: 600;
+  color: white;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.event-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #ef4444;
+  color: white;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+}
+
+/* Connections Overlay */
+.connections-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Node Details Panel */
+.node-details {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.details-header h4 {
+  margin: 0;
+  color: #1e293b;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: #f1f5f9;
+  color: #64748b;
+  border: none;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.detail-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+
+.detail-label {
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.detail-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.detail-value.active {
+  color: #22c55e;
+}
+
+.detail-value.inactive {
+  color: #ef4444;
+}
+
+/* Connections List */
+.connections-list {
+  margin-top: 15px;
+}
+
+.connections-list h5 {
+  margin: 0 0 10px 0;
+  color: #1e293b;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.connection-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.conn-target {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.conn-metrics {
+  display: flex;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.conn-distance {
+  font-weight: 500;
+}
+
+.conn-quality {
+  color: #22c55e;
+}
+
+.conn-latency {
+  color: #f59e0b;
+}
+
+/* Activity Feed */
+.mesh-activity {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.mesh-activity h4 {
+  margin: 0 0 15px 0;
+  color: #1e293b;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.activity-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.activity-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+
+.activity-time {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.activity-event {
+  font-size: 0.875rem;
+  color: #1e293b;
+  flex: 1;
+  margin-left: 12px;
+}
+
+.routing-method {
+  color: #3b82f6;
+  font-weight: 500;
+  font-size: 0.75rem;
+}
+
+/* Loading and Error States */
+.loading, .error {
+  text-align: center;
+  padding: 40px;
+  color: #64748b;
+  font-size: 1rem;
+}
+
+.error {
+  color: #ef4444;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  margin-bottom: 15px;
+}
+
+.retry-btn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.retry-btn:hover {
+  background: #2563eb;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .mesh-header {
+    flex-direction: column;
+    gap: 15px;
+    align-items: flex-start;
+  }
+  
+  .mesh-controls {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .status-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .details-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .topology-map {
+    height: 300px;
+  }
+  
+  .node {
+    width: 35px;
+    height: 35px;
+  }
+  
+  .node-icon {
+    font-size: 14px;
+  }
+  
+  .node-label {
+    font-size: 7px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mesh-network {
+    padding: 15px;
+  }
+  
+  .mesh-controls {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .mesh-controls button {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+  }
+  
+  .status-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  
+  .topology-map {
+    height: 250px;
+  }
+}

@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import apiService from '../api/api';
+import config from '../config/config';
 import '../styles/VoiceRecorder.css';
 
 function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
@@ -92,10 +93,10 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
 
     try {
       // Generate unique user ID (stored in localStorage for persistence)
-      let userId = localStorage.getItem('crisislink_user_id');
+      let userId = localStorage.getItem(config.user.storage.keys.userId);
       if (!userId) {
         userId = 'user_' + Math.random().toString(36).substring(2, 10);
-        localStorage.setItem('crisislink_user_id', userId);
+        localStorage.setItem(config.user.storage.keys.userId, userId);
       }
 
       const eventData = {
