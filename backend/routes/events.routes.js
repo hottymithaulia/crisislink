@@ -31,11 +31,17 @@ function createEventsRoutes() {
       } = req.body;
 
       const eventText = text || description || '';
-      const eventLat = parseFloat(lat || latitude);
-      const eventLon = parseFloat(lon || longitude);
+      let eventLat = parseFloat(lat || latitude);
+      let eventLon = parseFloat(lon || longitude);
 
       if (!eventText || isNaN(eventLat) || isNaN(eventLon)) {
         return res.apiError('Missing required fields: text (or description), lat/latitude, lon/longitude', 400);
+      }
+
+      // If phone glitch puts them in the ocean [0,0], default to Bhopal for demo
+      if (Math.abs(eventLat) < 1 && Math.abs(eventLon) < 1) {
+        eventLat = 23.2599;
+        eventLon = 77.4126;
       }
 
       // ── SPAM FILTER (Basic Geo) ───────────────────────────────────────
