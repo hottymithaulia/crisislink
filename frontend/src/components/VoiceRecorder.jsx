@@ -6,21 +6,25 @@
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import apiService from '../api/api';
-import { LANGUAGES, getLangCode } from '../services/TranslationService';
+import { LANGUAGES, getLangCode, translate } from '../services/TranslationService';
 import '../styles/VoiceRecorder.css';
 
 const LANG_OPTIONS = LANGUAGES;
 
 function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
-  const [isRecording, setIsRecording]     = useState(false);
-  const [transcript, setTranscript]       = useState('');
-  const [interimText, setInterimText]     = useState('');
-  const [audioBase64, setAudioBase64]     = useState(null);
-  const [isPosting, setIsPosting]         = useState(false);
-  const [postStatus, setPostStatus]       = useState(null); // null | 'posting' | 'success' | 'error'
-  const [selectedLang, setSelectedLang]   = useState('en-US');
-  const [sttSupported, setSttSupported]   = useState(false);
-  const [sttActive, setSttActive]         = useState(false);
+  const [isRecording, setIsRecording]       = useState(false);
+  const [transcript, setTranscript]         = useState('');   // raw STT in original lang
+  const [translatedText, setTranslatedText] = useState('');   // translated to English
+  const [isTranslating, setIsTranslating]   = useState(false);
+  const [interimText, setInterimText]       = useState('');
+  const [audioBase64, setAudioBase64]       = useState(null);
+  const [isPosting, setIsPosting]           = useState(false);
+  const [postStatus, setPostStatus]         = useState(null);
+  const [selectedLang, setSelectedLang]     = useState('en-US');
+  const [sttSupported, setSttSupported]     = useState(false);
+  const [sttActive, setSttActive]           = useState(false);
+
+  const translateTimerRef = useRef(null);
 
   const mediaRecorderRef = useRef(null);
   const chunksRef        = useRef([]);
@@ -36,6 +40,35 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     setSttSupported(!!SpeechRec);
   }, []);
+
+  // ── LIVE TRANSLATION: translate raw transcript → English ────────────────────
+  useEffect(() => {
+    const srcLang = getLangCode(selectedLang); // 'hi', 'en', 'ta', etc.
+    const rawText = (transcript + interimText).trim();
+
+    if (!rawText || srcLang === 'en') {
+      // No translation needed — just display raw text
+      setTranslatedText('');
+      return;
+    }
+
+    // Debounce: wait 600ms after typing/speaking stops before calling API
+    if (translateTimerRef.current) clearTimeout(translateTimerRef.current);
+    translateTimerRef.current = setTimeout(async () => {
+      setIsTranslating(true);
+      try {
+        const { translated, success } = await translate(rawText, srcLang, 'en');
+        if (success && translated) {
+          setTranslatedText(translated);
+        }
+      } catch (e) {
+        console.warn('Live translation failed:', e);
+      } finally {
+        setIsTranslating(false);
+      }
+    }, 600);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcript, interimText, selectedLang]);
 
   // ── START RECORDING ───────────────────────────────────────────────────────
   const startRecording = useCallback(async () => {
@@ -125,7 +158,13 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
 
   // ── POST EVENT ────────────────────────────────────────────────────────────
   const handlePost = useCallback(async () => {
-    const finalText = (transcript + interimText).trim();
+    const srcLang = getLangCode(selectedLang);
+    // Submit translated text if available (so feed shows English), else raw
+    const finalText = (srcLang !== 'en' && translatedText
+      ? translatedText
+      : (transcript + interimText)
+    ).trim();
+
     if (!finalText) {
       alert('Please enter or speak a description of the incident.');
       return;
@@ -165,11 +204,19 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
         setTimeout(() => {
           setPostStatus(null);
           setTranscript('');
+          setTranslatedText('');
           setAudioBase64(null);
         }, 3000);
         if (onEventPosted) onEventPosted(result.data?.event || result.data);
       } else {
-        throw new Error(result.error?.message || 'Failed to post event');
+        const errMsg = result.error?.message || 'Failed to post event';
+        // Show spam block reason clearly
+        if (result.spam) {
+          alert(`🚫 Report blocked: ${errMsg}\n\nTip: Be specific — include location, what happened, and how many people are affected.`);
+        } else {
+          throw new Error(errMsg);
+        }
+        setPostStatus(null);
       }
 
     } catch (error) {
@@ -179,10 +226,16 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
     } finally {
       setIsPosting(false);
     }
-  }, [transcript, interimText, backendStatus, userLocation, selectedLang, audioBase64, onEventPosted]);
+  }, [transcript, interimText, translatedText, backendStatus, userLocation, selectedLang, audioBase64, onEventPosted]);
 
   // ── RENDER ────────────────────────────────────────────────────────────────
-  const combinedText = transcript + (interimText ? `[${interimText}]` : '');
+  const srcLang = getLangCode(selectedLang);
+  const isNonEnglish = srcLang !== 'en';
+  // Show translated text in textbox if available, else raw
+  const displayText = isNonEnglish && translatedText
+    ? translatedText
+    : transcript + (interimText ? ` ${interimText}` : '');
+  const rawTranscriptPreview = isNonEnglish && transcript ? transcript : null;
 
   return (
     <div className="voice-recorder-container">
@@ -249,7 +302,7 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
         )}
       </div>
 
-      {/* Live transcription display */}
+      {/* Live transcription / translation display */}
       {isRecording && (interimText || transcript) && (
         <div style={{
           background: 'rgba(99,102,241,0.1)',
@@ -261,11 +314,31 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
           color: '#e2e8f0',
           minHeight: '40px',
         }}>
-          <span style={{ color: '#94a3b8', fontSize: '11px' }}>🎙️ Live transcription:</span>
-          <p style={{ margin: '4px 0 0' }}>
-            {transcript}
-            <span style={{ color: '#94a3b8' }}>{interimText}</span>
-          </p>
+          {isNonEnglish ? (
+            <>
+              <span style={{ color: '#94a3b8', fontSize: '11px' }}>🎙️ Heard ({selectedLang.split('-')[0].toUpperCase()}):</span>
+              <p style={{ margin: '2px 0 6px', color: '#94a3b8', fontStyle: 'italic', fontSize: '12px' }}>
+                {transcript}<span style={{ opacity: 0.6 }}>{interimText}</span>
+              </p>
+              {isTranslating && (
+                <p style={{ margin: 0, color: '#6366f1', fontSize: '11px' }}>🌐 Translating...</p>
+              )}
+              {translatedText && (
+                <>
+                  <span style={{ color: '#4ade80', fontSize: '11px' }}>✅ English translation:</span>
+                  <p style={{ margin: '2px 0 0', color: '#f1f5f9', fontWeight: 500 }}>{translatedText}</p>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <span style={{ color: '#94a3b8', fontSize: '11px' }}>🎙️ Live transcription:</span>
+              <p style={{ margin: '4px 0 0' }}>
+                {transcript}
+                <span style={{ color: '#94a3b8' }}>{interimText}</span>
+              </p>
+            </>
+          )}
         </div>
       )}
 
@@ -279,11 +352,35 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
 
       {/* Text input */}
       <div className="text-input-group">
-        <label className="text-label">📝 Description (edit or type directly)</label>
+        <label className="text-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span>📝 {isNonEnglish ? 'Translated (English)' : 'Description'}</span>
+          {isTranslating && <span style={{ color: '#6366f1', fontSize: '11px', fontWeight: 400 }}>🌐 Translating...</span>}
+        </label>
+
+        {/* Original language preview strip */}
+        {rawTranscriptPreview && (
+          <div style={{
+            padding: '8px 12px',
+            marginBottom: '8px',
+            background: 'rgba(255,255,255,0.04)',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.08)',
+            fontSize: '12px',
+            color: '#94a3b8',
+            fontStyle: 'italic',
+          }}>
+            🗣️ Original: {rawTranscriptPreview}
+          </div>
+        )}
+
         <textarea
           className="text-input"
-          value={combinedText}
-          onChange={e => { setTranscript(e.target.value); setInterimText(''); }}
+          value={displayText}
+          onChange={e => {
+            setTranslatedText(e.target.value);
+            if (!isNonEnglish) setTranscript(e.target.value);
+            setInterimText('');
+          }}
           placeholder={`Describe the incident in ${LANG_OPTIONS.find(l => l.code === selectedLang)?.label || 'your language'}...
 
 Examples:

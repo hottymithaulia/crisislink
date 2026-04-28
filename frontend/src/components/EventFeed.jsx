@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import EventCard from './EventCard';
 import apiService from '../api/api';
 import socketService from '../services/socket';
@@ -6,10 +6,13 @@ import config from '../config/config';
 import '../styles/EventFeed.css';
 
 function EventFeed({ userLocation, backendStatus }) {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [events, setEvents]         = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [queue, setQueue]           = useState([]);   // incoming events waiting to animate in
+  const queueRef = useRef([]);
+  const processingRef = useRef(false);
 
   const fetchNearbyEvents = useCallback(async () => {
     if (backendStatus !== 'online') return;
@@ -78,15 +81,12 @@ function EventFeed({ userLocation, backendStatus }) {
 
     // Listen for new events (including seed broadcasts)
     const handleNew = (data) => {
-      // Backend sends either raw event OR { event: {...}, source: 'seed' }
       const evt = data?.event || data;
       if (!evt?.id) return;
       console.log('📡 WebSocket received new event:', evt.id);
-      setEvents(prev => {
-        if (prev.some(e => e.id === evt.id)) return prev;
-        return [evt, ...prev];
-      });
-      setLastUpdated(new Date());
+      // Add to queue — processed one-by-one below
+      queueRef.current = [...queueRef.current, evt];
+      setQueue(q => [...q, evt]);
       setLoading(false);
     };
 
@@ -114,6 +114,28 @@ function EventFeed({ userLocation, backendStatus }) {
       socketService.off('eventFaked',     handleUpdate);
     };
   }, [backendStatus, requestInitialEvents, fetchNearbyEvents]);
+
+  // ── QUEUE PROCESSOR: drain one event every 450ms ──────────────────────────
+  useEffect(() => {
+    if (queue.length === 0 || processingRef.current) return;
+
+    processingRef.current = true;
+    const timer = setTimeout(() => {
+      const [next, ...rest] = queueRef.current;
+      if (next) {
+        setEvents(prev => {
+          if (prev.some(e => e.id === next.id)) return prev;
+          return [next, ...prev];
+        });
+        setLastUpdated(new Date());
+        queueRef.current = rest;
+        setQueue(rest);
+      }
+      processingRef.current = false;
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [queue]);
 
   const handleConfirm = async (eventId) => {
     if (backendStatus !== 'online') {
@@ -191,6 +213,24 @@ function EventFeed({ userLocation, backendStatus }) {
           {backendStatus === 'offline' && ' • Backend offline'}
         </p>
       </div>
+
+      {/* Incoming queue banner */}
+      {queue.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px',
+          padding: '8px 14px', margin: '0 0 8px',
+          background: 'rgba(99,102,241,0.12)',
+          border: '1px solid rgba(99,102,241,0.3)',
+          borderRadius: '10px', fontSize: '12px', color: '#a5b4fc',
+        }}>
+          <span>📥</span>
+          <span><strong>{queue.length}</strong> new incident{queue.length !== 1 ? 's' : ''} incoming...</span>
+          <span style={{
+            marginLeft: 'auto', width: '8px', height: '8px',
+            borderRadius: '50%', background: '#6366f1', display: 'inline-block',
+          }} />
+        </div>
+      )}
 
       {error && (
         <div className="error-box">
