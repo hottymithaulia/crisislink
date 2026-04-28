@@ -48,7 +48,10 @@ async function safeFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw { status: res.status, data: errorData };
+  }
   return res.json() as Promise<T>;
 }
 
