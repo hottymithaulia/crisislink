@@ -40,6 +40,7 @@ function Index() {
   const [sound, setSound] = useState(true);
   const [loadingDemo, setLoadingDemo] = useState(false);
   const [demoOpen, setDemoOpen] = useState(false);
+  const [showFeed, setShowFeed] = useState(true);
   const [demoLogs, setDemoLogs] = useState<DemoLog[]>([]);
   const [shareAnchor, setShareAnchor] = useState<DOMRect | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -249,7 +250,23 @@ function Index() {
             votedFake={votedFake}
           />
         </div>
-        <aside className="relative z-[500] hidden md:block w-[340px] border-l border-glass-border bg-void/60 backdrop-blur-md">
+        {showFeed && (
+          <aside className="relative z-[500] hidden md:block w-[340px] border-l border-glass-border bg-void/60 backdrop-blur-md transition-all">
+            <EventFeed
+              events={events}
+              loading={loading}
+              userPos={pos}
+              votedConfirm={votedConfirm}
+              votedFake={votedFake}
+              onConfirm={handleConfirm}
+              onFake={handleFake}
+            />
+          </aside>
+        )}
+      </div>
+
+      {showFeed && (
+        <BottomSheet count={events.length}>
           <EventFeed
             events={events}
             loading={loading}
@@ -259,20 +276,17 @@ function Index() {
             onConfirm={handleConfirm}
             onFake={handleFake}
           />
-        </aside>
-      </div>
+        </BottomSheet>
+      )}
 
-      <BottomSheet count={events.length}>
-        <EventFeed
-          events={events}
-          loading={loading}
-          userPos={pos}
-          votedConfirm={votedConfirm}
-          votedFake={votedFake}
-          onConfirm={handleConfirm}
-          onFake={handleFake}
-        />
-      </BottomSheet>
+      {/* Feed Toggle Button */}
+      <button
+        onClick={() => setShowFeed((s) => !s)}
+        className="fixed bottom-6 right-4 z-[1050] flex h-12 w-12 items-center justify-center rounded-full border border-glass-border bg-glass text-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-md transition hover:bg-glass-hover hover:scale-110"
+        title="Toggle Incidents Feed"
+      >
+        {showFeed ? "👁️‍🗨️" : "📋"}
+      </button>
 
       <VoiceFAB onSubmit={handlePost} />
       <DemoVisualizer open={demoOpen} logs={demoLogs} onClose={() => setDemoOpen(false)} />
