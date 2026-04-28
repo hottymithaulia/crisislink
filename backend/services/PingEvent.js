@@ -35,9 +35,12 @@ class PingEvent {
     
     // Response tracking
     this.responders = data.responders || [];
+    this.fakers = data.fakers || [];
     
     // Voice/audio data
-    this.voice_url = data.voice_url || null;
+    this.voice_url    = data.voice_url    || null;
+    this.audio_base64 = data.audio_base64 || null;  // base64 audio for cross-device playback
+    this.lang         = data.lang         || 'en';  // language of the report (ISO 639-1)
     
     // Escalation state tracking
     this.escalation_state = data.escalation_state || 'hyperlocal';
@@ -86,12 +89,15 @@ class PingEvent {
       confirmations: this.confirmations,
       fakes: this.fakes,
       responders: this.responders,
-      voice_url: this.voice_url,
-      escalation_state: this.escalation_state,
-      current_radius_km: this.current_radius_km,
+      fakers: this.fakers,
+      voice_url:              this.voice_url,
+      audio_base64:           this.audio_base64,
+      lang:                   this.lang,
+      escalation_state:       this.escalation_state,
+      current_radius_km:      this.current_radius_km,
       needs_cloud_escalation: this.needs_cloud_escalation,
-      escalation_color: this.escalation_color,
-      escalation_label: this.escalation_label
+      escalation_color:       this.escalation_color,
+      escalation_label:       this.escalation_label
     };
   }
 
@@ -148,20 +154,33 @@ class PingEvent {
   /**
    * Add a confirmation
    * @param {string} userId - User confirming the event
+   * @returns {boolean} True if confirmation was added, false if already confirmed
    */
   addConfirmation(userId) {
-    if (!this.responders.includes(userId)) {
-      this.responders.push(userId);
+    if (this.responders.includes(userId)) return false;
+    if (this.fakers.includes(userId)) {
+      this.fakers = this.fakers.filter(id => id !== userId);
+      this.fakes = Math.max(0, this.fakes - 1);
     }
+    this.responders.push(userId);
     this.confirmations++;
+    return true;
   }
 
   /**
    * Add a fake report
    * @param {string} userId - User reporting fake
+   * @returns {boolean} True if fake report was added, false if already faked
    */
   addFake(userId) {
+    if (this.fakers.includes(userId)) return false;
+    if (this.responders.includes(userId)) {
+      this.responders = this.responders.filter(id => id !== userId);
+      this.confirmations = Math.max(0, this.confirmations - 1);
+    }
+    this.fakers.push(userId);
     this.fakes++;
+    return true;
   }
 
   /**
@@ -172,6 +191,15 @@ class PingEvent {
     const total = this.confirmations + this.fakes;
     if (total === 0) return 0.5;
     return this.confirmations / total;
+  }
+
+  /**
+   * Check if event is considered resolved
+   * (more confirmations than fakes, and at least some confirmations)
+   * @returns {boolean} True if resolved
+   */
+  isResolved() {
+    return this.confirmations > 0 && this.confirmations > this.fakes;
   }
 
   /**

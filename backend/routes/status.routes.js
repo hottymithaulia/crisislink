@@ -91,7 +91,29 @@ function createStatusRoutes() {
         }
       };
 
-      res.apiSuccess(status, 'System status retrieved successfully');
+      // ── Dashboard-friendly flat fields for StatsPanel ────────────────
+      const allEvents = Array.from(services.eventStore.events.values());
+      const totalConf = allEvents.reduce((s, e) => s + (e.confirmations || 0), 0);
+      const totalFake = allEvents.reduce((s, e) => s + (e.fakes || 0), 0);
+      const falseAlarms = allEvents.filter(e => (e.fakes || 0) > (e.confirmations || 0)).length;
+      const totalInteractions = totalConf + totalFake;
+      const responseRate = totalInteractions > 0 ? Math.round((totalConf / totalInteractions) * 100) : 0;
+      const topType = Object.entries(eventTypeDistribution).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+      const io = req.app.get('io');
+      const connectedDevices = io?.engine?.clientsCount ?? 0;
+
+      const dashboardStats = {
+        eventCount:        totalEvents,
+        activeEvents,
+        totalConfirmations: totalConf,
+        falseAlarms,
+        responseRate,
+        topEventType:      topType,
+        connectedDevices,
+        uptimeSeconds:     Math.floor(process.uptime()),
+      };
+
+      res.apiSuccess({ ...status, ...dashboardStats }, 'System status retrieved successfully');
 
     } catch (error) {
       console.error('Error fetching status:', error);
@@ -129,22 +151,17 @@ function createStatusRoutes() {
     }
   });
 
-  // GET /status/mesh - Mesh network status
+  // GET /status/mesh - Mesh network status (simulation mode)
   router.get('/mesh', async (req, res) => {
     try {
-      const { services, config } = req.app.locals;
-      
-      const meshStatus = {
-        enabled: config.network.mesh.enabled,
-        simulationMode: config.network.mesh.simulationMode,
-        maxHops: config.network.mesh.maxHops,
-        propagationDelayMs: config.network.mesh.propagationDelayMs,
-        statistics: services.meshSimulator.getStatistics(),
-        recentActivity: services.meshSimulator.getRecentActivity(10)
-      };
-
-      res.apiSuccess(meshStatus, 'Mesh network status retrieved successfully');
-
+      const { config } = req.app.locals;
+      // Mesh is disabled for MVP — return simulation status
+      res.apiSuccess({
+        enabled: false,
+        simulationMode: true,
+        note: 'Mesh network disabled in MVP. Visual simulation active on map.',
+        maxHops: config.network?.mesh?.maxHops ?? 5,
+      }, 'Mesh network status retrieved successfully');
     } catch (error) {
       console.error('Error fetching mesh status:', error);
       res.apiError('Failed to fetch mesh network status', 500);

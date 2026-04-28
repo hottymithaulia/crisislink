@@ -18,17 +18,19 @@ function EventFeed({ userLocation, backendStatus }) {
     try {
       const { lat, lon } = userLocation;
       const radius = config.map.maxRadius;
-      
+
       const data = await apiService.getNearbyEvents(lat, lon, radius);
-      
-      if (data.success) {
-        setEvents(data.data.events);
+
+      if (data && data.success) {
+        // Backend wraps in { success, data: { events: [...] } }
+        const events = data.data?.events || data.events || [];
+        setEvents(events);
         setLastUpdated(new Date());
         setError(null);
       } else {
-        throw new Error(data.error || 'Failed to fetch events');
+        throw new Error((data && data.error) ? data.error : 'Failed to fetch events');
       }
-      
+
     } catch (err) {
       console.error('Error fetching events:', err);
       setError('Could not load incidents. Is the backend running?');
@@ -50,57 +52,68 @@ function EventFeed({ userLocation, backendStatus }) {
 
   // Set up WebSocket connection for real-time updates
   useEffect(() => {
-    if (backendStatus === 'online') {
-      const socket = socketService.connect();
-      
-      // Request initial events on connection
-      requestInitialEvents();
-      
-      // Listen for initial events response
-      socketService.on('initialEvents', (data) => {
-        console.log('� Received initial events:', data.events.length);
-        setEvents(data.events);
-        setLastUpdated(new Date());
-        setLoading(false);
-        setError(null);
-      });
-      
-      // Listen for new events and add to feed
-      socketService.on('new_event', (newEvent) => {
-        console.log('📡 WebSocket received new event:', newEvent.id);
-        setEvents(prevEvents => {
-          // Prevent duplicates
-          if (prevEvents.some(e => e.id === newEvent.id)) {
-            return prevEvents;
-          }
-          // Add new event at the top (newest first)
-          return [newEvent, ...prevEvents];
-        });
-        setLastUpdated(new Date());
-      });
-      
-      // Listen for event updates (confirm/fake)
-      socketService.on('event_updated', (updatedEvent) => {
-        console.log('📡 WebSocket received event update:', updatedEvent.id);
-        setEvents(prevEvents => {
-          return prevEvents.map(event => 
-            event.id === updatedEvent.id ? updatedEvent : event
-          );
-        });
-        setLastUpdated(new Date());
-      });
-      
-      // Cleanup WebSocket on unmount
-      return () => {
-        socketService.off('initialEvents');
-        socketService.off('new_event');
-        socketService.off('event_updated');
-      };
-    } else {
+    if (backendStatus !== 'online') {
       setLoading(false);
       setEvents([]);
+      return;
     }
-  }, [backendStatus, userLocation, requestInitialEvents]);
+
+    socketService.connect();
+
+    // Request initial events
+    requestInitialEvents();
+
+    // Also do a REST fetch as fallback
+    fetchNearbyEvents();
+
+    // Listen for initial events via socket response
+    const handleInitial = (data) => {
+      console.log('📡 Received initial events:', data?.events?.length || 0);
+      const evts = data?.events || [];
+      setEvents(evts);
+      setLastUpdated(new Date());
+      setLoading(false);
+      setError(null);
+    };
+
+    // Listen for new events (including seed broadcasts)
+    const handleNew = (data) => {
+      // Backend sends either raw event OR { event: {...}, source: 'seed' }
+      const evt = data?.event || data;
+      if (!evt?.id) return;
+      console.log('📡 WebSocket received new event:', evt.id);
+      setEvents(prev => {
+        if (prev.some(e => e.id === evt.id)) return prev;
+        return [evt, ...prev];
+      });
+      setLastUpdated(new Date());
+      setLoading(false);
+    };
+
+    // Listen for event updates (confirm/fake)
+    const handleUpdate = (data) => {
+      // Backend sends either raw event OR { event: {...} }
+      const evt = data?.event || data;
+      if (!evt?.id) return;
+      console.log('📡 WebSocket received event update:', evt.id);
+      setEvents(prev => prev.map(e => e.id === evt.id ? { ...e, ...evt } : e));
+      setLastUpdated(new Date());
+    };
+
+    socketService.on('initialEvents',  handleInitial);
+    socketService.on('new_event',      handleNew);
+    socketService.on('event_updated',  handleUpdate);
+    socketService.on('eventConfirmed', handleUpdate);
+    socketService.on('eventFaked',     handleUpdate);
+
+    return () => {
+      socketService.off('initialEvents',  handleInitial);
+      socketService.off('new_event',      handleNew);
+      socketService.off('event_updated',  handleUpdate);
+      socketService.off('eventConfirmed', handleUpdate);
+      socketService.off('eventFaked',     handleUpdate);
+    };
+  }, [backendStatus, requestInitialEvents, fetchNearbyEvents]);
 
   const handleConfirm = async (eventId) => {
     if (backendStatus !== 'online') {

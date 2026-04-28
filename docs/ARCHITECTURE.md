@@ -6,22 +6,22 @@ CrisisLink is a client-server architecture designed for local network deployment
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        CLIENTS (Phones)                       │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │  Phone A    │  │  Phone B    │  │  Phone C    │         │
-│  │  (Reporter) │  │ (Responder) │  │  (Viewer)   │         │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘         │
-└─────────┼────────────────┼────────────────┼───────────────┘
+│                        CLIENTS (Phones)                     │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
+│  │  Phone A    │  │  Phone B    │  │  Phone C    │          │
+│  │  (Reporter) │  │ (Responder) │  │  (Viewer)   │          │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘          │
+└─────────┼────────────────┼────────────────┼─────────────────┘
           │                │                │
           └────────────────┼────────────────┘
                            │ HTTP/REST
               ┌────────────▼────────────┐
-              │      Express Server       │
-              │       (Backend)           │
-              │    http://localhost:3001  │
+              │     Express Server      │
+              │       (Backend)         │
+              │  http://localhost:3001  │
               └────────────┬────────────┘
                            │
-              ┌────────────▼────────────┐
+              ┌────────────▼──────────────┐
               │      Services Layer       │
               │  ┌─────────────────────┐  │
               │  │   EventStore        │  │
@@ -29,7 +29,7 @@ CrisisLink is a client-server architecture designed for local network deployment
               │  └─────────────────────┘  │
               │  ┌─────────────────────┐  │
               │  │   ReputationEngine  │  │
-              │  │   (Trust Scores)      │  │
+              │  │   (Trust Scores)    │  │
               │  └─────────────────────┘  │
               │  ┌─────────────────────┐  │
               │  │   EscalationTimer   │  │

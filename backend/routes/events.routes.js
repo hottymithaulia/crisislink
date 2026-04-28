@@ -6,67 +6,106 @@
 const express = require('express');
 const router = express.Router();
 const PingEvent = require('../services/PingEvent');
+const SpamFilter = require('../services/SpamFilter');
 
 function createEventsRoutes() {
+
   // POST /events - Create new incident
   router.post('/', async (req, res) => {
     try {
       const { services } = req.app.locals;
-      const { 
-        type, 
-        urgency, 
-        description, 
-        lat, 
-        lon, 
-        user_id, 
-        voice_url 
-      } = req.body;
-
-      // Validation
-      if (!type || !urgency || !description || !lat || !lon) {
-        return res.apiError('Missing required fields: type, urgency, description, lat, lon', 400);
-      }
-
-      // Generate unique ID
-      const event_id = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      // Create new PingEvent
-      const event = new PingEvent({
-        id: event_id,
+      const {
         type,
         urgency,
         description,
-        lat: parseFloat(lat),
-        lon: parseFloat(lon),
-        user_id: user_id || 'anonymous',
-        voice_url: voice_url || null
+        text,
+        lat,
+        lon,
+        latitude,
+        longitude,
+        user_id,
+        voice_url,
+        audio_base64,
+        lang,
+      } = req.body;
+
+      const eventText = text || description || '';
+      const eventLat = parseFloat(lat || latitude);
+      const eventLon = parseFloat(lon || longitude);
+
+      if (!eventText || isNaN(eventLat) || isNaN(eventLon)) {
+        return res.apiError('Missing required fields: text (or description), lat/latitude, lon/longitude', 400);
+      }
+
+      let detectedType = type;
+      let detectedUrgency = urgency;
+
+      if (!detectedType || !detectedUrgency) {
+        const analysis = services.voiceProcessor.analyzeVoiceInput(eventText);
+        detectedType    = detectedType    || analysis.type    || 'incident';
+        detectedUrgency = detectedUrgency || analysis.urgency || 'medium';
+      }
+
+      const event_id = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      const event = new PingEvent({
+        id:           event_id,
+        type:         detectedType,
+        urgency:      detectedUrgency,
+        text:         eventText,
+        lat:          eventLat,
+        lon:          eventLon,
+        user_id:      user_id || 'anonymous',
+        voice_url:    voice_url    || null,
+        audio_base64: audio_base64 || null,
+        lang:         lang         || 'en',
+        user_reputation: 0.5,
       });
+
+      // ── SPAM FILTER ───────────────────────────────────────────────────
+      const geoCheck = SpamFilter.checkCoordinates(eventLat, eventLon);
+      if (!geoCheck.valid) {
+        return res.apiError(`Location rejected: ${geoCheck.reason}`, 422);
+      }
+      const spamCheck = SpamFilter.analyze(eventText);
+      if (spamCheck.spam) {
+        console.warn(`🚫 Spam blocked from ${user_id || 'anonymous'}: ${spamCheck.reason}`);
+        return res.status(422).json({
+          success: false,
+          error: { message: spamCheck.reason, code: 'SPAM_DETECTED' },
+          spam: true,
+          reason: spamCheck.reason,
+          confidence: spamCheck.confidence,
+        });
+      }
 
       // Store event
       services.eventStore.addEvent(event);
 
-      // Log to mesh network
-      services.meshSimulator.logEventCreation(event);
-
-      // Emit WebSocket event for real-time updates
-      const io = req.app.get('io');
-      if (io) {
-        // Get author's reputation for the WebSocket event
-        const userRep = services.eventStore.getUserReputation(event.user_id);
-        const reputation = services.reputationEngine.calculateScore(event.user_id, userRep);
-        const tier = services.reputationEngine.getDisplayTier(reputation);
-        
-        const eventWithRep = {
-          ...event.toJSON(),
-          reputation,
-          reputation_tier: tier
-        };
-        
-        io.emit('new_event', eventWithRep);
-        console.log(`📡 WebSocket: Broadcasted new event ${event.id}`);
+      if (services.meshSimulator && services.meshSimulator.config.enabled) {
+        services.meshSimulator.logEventCreation(event);
       }
 
-      console.log(`📨 Received event from user: ${user_id} (${type}/${urgency})`);
+      // Trust gating: determine badge based on trust score
+      const userRep = services.eventStore.getUserReputation(event.user_id);
+      const reputation = services.reputationEngine.calculateScore(event.user_id, userRep);
+      const tier = services.reputationEngine.getDisplayTier(reputation);
+      const isUnverified = tier.id === 'bronze' || tier.id === 'untrusted';
+
+      const io = req.app.get('io');
+      if (io) {
+        io.emit('new_event', {
+          event: {
+            ...event.toJSON(),
+            reputation,
+            reputation_tier: tier,
+            unverified: isUnverified,
+          }
+        });
+        console.log(`📡 WebSocket: Broadcasted new event ${event.id} [${tier.id}]`);
+      }
+
+      console.log(`📨 New event from user: ${user_id || 'anonymous'} (${detectedType}/${detectedUrgency})`);
 
       res.apiCreated({
         event_id: event.id,
@@ -74,7 +113,10 @@ function createEventsRoutes() {
         urgency: event.urgency,
         timestamp: event.timestamp,
         location: { lat: event.lat, lon: event.lon },
-        text: event.text
+        text: event.text,
+        unverified: isUnverified,
+        trust_tier: tier.id,
+        event: event.toJSON(),
       }, 'Event created successfully');
 
     } catch (error) {
@@ -84,13 +126,17 @@ function createEventsRoutes() {
   });
 
   // GET /events/nearby - Get events near location
+  // IMPORTANT: This must come before /:id to avoid conflict
   router.get('/nearby', async (req, res) => {
     try {
       const { services } = req.app.locals;
-      const { lat, lon, radius = 5 } = req.query;
+      // Accept both lat/lon and latitude/longitude param names
+      const lat = req.query.lat || req.query.latitude;
+      const lon = req.query.lon || req.query.longitude;
+      const radius = req.query.radius || 5;
 
       if (!lat || !lon) {
-        return res.apiError('Missing required parameters: lat, lon', 400);
+        return res.apiError('Missing required parameters: lat, lon (or latitude, longitude)', 400);
       }
 
       const events = services.eventStore.getNearbyEvents(
@@ -100,23 +146,23 @@ function createEventsRoutes() {
       );
 
       // Add reputation data to each event
-      const eventsWithReputation = events.map(event => {
-        const userRep = services.eventStore.userReputation.get(event.user_id);
+      const eventsWithReputation = events.map(eventData => {
+        const userRep = services.eventStore.getUserReputation(eventData.user_id);
         const reputation = services.reputationEngine.calculateScore(
-          event.user_id,
+          eventData.user_id,
           userRep
         );
         const tier = services.reputationEngine.getDisplayTier(reputation);
 
         return {
-          ...event.toJSON(),
+          ...eventData,
           reputation,
           reputation_tier: tier,
           distance_km: services.eventStore.calculateDistance(
             parseFloat(lat),
             parseFloat(lon),
-            event.lat,
-            event.lon
+            eventData.lat,
+            eventData.lon
           )
         };
       });
@@ -134,6 +180,25 @@ function createEventsRoutes() {
     }
   });
 
+  // GET /events/all - Get all events (for debugging/admin)
+  router.get('/all', async (req, res) => {
+    try {
+      const { services } = req.app.locals;
+      const events = Array.from(services.eventStore.events.values());
+      const eventsData = events.map(event => event.toJSON());
+
+      res.apiSuccess({
+        events: eventsData,
+        count: eventsData.length,
+        total_users: services.eventStore.userReputation.size
+      }, 'All events retrieved successfully');
+
+    } catch (error) {
+      console.error('Error fetching all events:', error);
+      res.apiError('Failed to fetch all events', 500);
+    }
+  });
+
   // POST /events/:id/confirm - Confirm event is real
   router.post('/:id/confirm', async (req, res) => {
     try {
@@ -141,47 +206,44 @@ function createEventsRoutes() {
       const { id } = req.params;
       const { user_id } = req.body;
 
-      if (!user_id) {
-        return res.apiError('Missing required field: user_id', 400);
-      }
-
       const event = services.eventStore.getEventById(id);
       if (!event) {
         return res.apiError('Event not found', 404);
       }
 
       // Add confirmation
-      event.addConfirmation(user_id);
-      services.eventStore.updateUserReputation(user_id, 'confirmed');
+      const added = event.addConfirmation(user_id || 'anonymous');
+      if (!added) {
+        return res.apiError('You have already interacted with this event', 400);
+      }
+      services.eventStore.updateUserReputation(event.user_id, { confirmed: 1 });
 
-      // Log to mesh network
-      services.meshSimulator.logEventConfirmation(event, user_id);
+      // Log to mesh network (safe)
+      if (services.meshSimulator && services.meshSimulator.config.enabled) {
+        services.meshSimulator.logEventConfirmation(event, user_id);
+      }
 
       // Emit WebSocket event for real-time updates
       const io = req.app.get('io');
       if (io) {
-        // Get author's reputation for the WebSocket event
         const userRep = services.eventStore.getUserReputation(event.user_id);
         const reputation = services.reputationEngine.calculateScore(event.user_id, userRep);
         const tier = services.reputationEngine.getDisplayTier(reputation);
-        
-        const eventWithRep = {
+
+        io.emit('event_updated', {
           ...event.toJSON(),
           reputation,
           reputation_tier: tier
-        };
-        
-        io.emit('event_updated', eventWithRep);
-        console.log(`📡 WebSocket: Broadcasted event update ${event.id}`);
+        });
       }
 
-      console.log(`✅ Event ${id} confirmed by ${user_id}`);
+      console.log(`✅ Event ${id} confirmed by ${user_id || 'anonymous'}`);
 
       res.apiSuccess({
         event_id: id,
         confirmations: event.confirmations,
         fakes: event.fakes,
-        confirmed_by: user_id
+        confirmed_by: user_id || 'anonymous'
       }, 'Event confirmed successfully');
 
     } catch (error) {
@@ -197,47 +259,44 @@ function createEventsRoutes() {
       const { id } = req.params;
       const { user_id } = req.body;
 
-      if (!user_id) {
-        return res.apiError('Missing required field: user_id', 400);
-      }
-
       const event = services.eventStore.getEventById(id);
       if (!event) {
         return res.apiError('Event not found', 404);
       }
 
       // Add fake report
-      event.addFake(user_id);
-      services.eventStore.updateUserReputation(user_id, 'fake');
+      const added = event.addFake(user_id || 'anonymous');
+      if (!added) {
+        return res.apiError('You have already interacted with this event', 400);
+      }
+      services.eventStore.updateUserReputation(event.user_id, { fakes: 1 });
 
-      // Log to mesh network
-      services.meshSimulator.logEventFakeReport(event, user_id);
+      // Log to mesh network (safe)
+      if (services.meshSimulator && services.meshSimulator.config.enabled) {
+        services.meshSimulator.logEventFakeReport(event, user_id);
+      }
 
       // Emit WebSocket event for real-time updates
       const io = req.app.get('io');
       if (io) {
-        // Get author's reputation for the WebSocket event
         const userRep = services.eventStore.getUserReputation(event.user_id);
         const reputation = services.reputationEngine.calculateScore(event.user_id, userRep);
         const tier = services.reputationEngine.getDisplayTier(reputation);
-        
-        const eventWithRep = {
+
+        io.emit('event_updated', {
           ...event.toJSON(),
           reputation,
           reputation_tier: tier
-        };
-        
-        io.emit('event_updated', eventWithRep);
-        console.log(`📡 WebSocket: Broadcasted event update ${event.id}`);
+        });
       }
 
-      console.log(`🚫 Event ${id} reported as fake by ${user_id}`);
+      console.log(`🚫 Event ${id} reported as fake by ${user_id || 'anonymous'}`);
 
       res.apiSuccess({
         event_id: id,
         confirmations: event.confirmations,
         fakes: event.fakes,
-        reported_by: user_id
+        reported_by: user_id || 'anonymous'
       }, 'Event reported as fake successfully');
 
     } catch (error) {
@@ -246,23 +305,136 @@ function createEventsRoutes() {
     }
   });
 
-  // GET /events/all - Get all events (for debugging/admin)
-  router.get('/all', async (req, res) => {
+  // GET /events/:id - Get single event by ID
+  router.get('/:id', async (req, res) => {
     try {
       const { services } = req.app.locals;
-      const events = Array.from(services.eventStore.events.values());
+      const event = services.eventStore.getEventById(req.params.id);
 
-      const eventsData = events.map(event => event.toJSON());
+      if (!event) {
+        return res.apiError('Event not found', 404);
+      }
 
-      res.apiSuccess({
-        events: eventsData,
-        count: eventsData.length,
-        total_users: services.eventStore.userReputation.size
-      }, 'All events retrieved successfully');
+      res.apiSuccess({ event: event.toJSON() }, 'Event retrieved successfully');
 
     } catch (error) {
-      console.error('Error fetching all events:', error);
-      res.apiError('Failed to fetch all events', 500);
+      console.error('Error fetching event:', error);
+      res.apiError('Failed to fetch event', 500);
+    }
+  });
+
+  // POST /events/seed - Visual demo: random events + spam filter
+  router.post('/seed', async (req, res) => {
+    try {
+      const { services } = req.app.locals;
+      const { getRandomEvents } = require('../data/seedEvents');
+      const io = req.app.get('io');
+
+      const picks    = getRandomEvents(10);
+      const accepted = [];
+      const blocked  = [];
+      const log      = [];
+
+      console.log('\n' + '═'.repeat(60));
+      console.log('🎬  CRISISLINK DEMO — PROCESSING 10 INCOMING REPORTS');
+      console.log('═'.repeat(60));
+
+      for (let i = 0; i < picks.length; i++) {
+        const seed = picks[i];
+        const idx  = `[${i + 1}/${picks.length}]`;
+
+        // ── Run spam filter ──────────────────────────────────────────
+        const spamResult = SpamFilter.analyze(seed.text);
+        const geoResult  = SpamFilter.checkCoordinates(seed.lat, seed.lon);
+
+        const isBlocked = spamResult.spam || !geoResult.valid;
+        const reason    = spamResult.spam ? spamResult.reason : (!geoResult.valid ? geoResult.reason : null);
+
+        const entry = {
+          index:      i + 1,
+          text:       seed.text.substring(0, 80) + (seed.text.length > 80 ? '...' : ''),
+          type:       seed.type,
+          urgency:    seed.urgency,
+          genuine:    seed.genuine,
+          blocked:    isBlocked,
+          reason:     reason,
+          confidence: spamResult.confidence,
+          user:       seed.user_id,
+          trust:      seed.trust || 0.5,
+        };
+
+        if (isBlocked) {
+          // ── BLOCKED ────────────────────────────────────────────────
+          console.log(`${idx} 🚫 BLOCKED  | "${seed.text.substring(0, 50)}..." → ${reason}`);
+          blocked.push(entry);
+
+          // Broadcast the block so frontend can show it visually
+          if (io) {
+            io.emit('seed_event_blocked', {
+              index: i + 1,
+              total: picks.length,
+              text:  seed.text,
+              reason,
+              confidence: spamResult.confidence,
+              user: seed.user_id,
+            });
+          }
+        } else {
+          // ── ACCEPTED ───────────────────────────────────────────────
+          const event = new PingEvent({
+            text:      seed.text,
+            type:      seed.type,
+            urgency:   seed.urgency,
+            lat:       seed.lat,
+            lon:       seed.lon,
+            user_id:   seed.user_id || 'demo_seed',
+            voice_url: null,
+            user_reputation: seed.trust || 0.7,
+          });
+
+          for (let c = 0; c < (seed.confirmations || 0); c++) event.confirmations++;
+          for (let f = 0; f < (seed.fakes || 0); f++) event.fakes++;
+
+          services.eventStore.addEvent(event);
+          accepted.push(event.toJSON());
+          entry.eventId = event.id;
+
+          console.log(`${idx} ✅ ACCEPTED | "${seed.text.substring(0, 50)}..." [${seed.type}/${seed.urgency}]`);
+
+          if (io) {
+            io.emit('new_event', {
+              event: event.toJSON(),
+              source: 'seed',
+              index: i + 1,
+              total: picks.length,
+            });
+          }
+        }
+
+        log.push(entry);
+
+        // Add a small delay so judges can see the live processing
+        await new Promise(resolve => setTimeout(resolve, 800));
+      }
+
+      console.log('─'.repeat(60));
+      console.log(`✅ Accepted: ${accepted.length} | 🚫 Blocked: ${blocked.length} | Total: ${picks.length}`);
+      console.log('═'.repeat(60) + '\n');
+
+      res.apiSuccess({
+        events:  accepted,
+        blocked,
+        log,
+        summary: {
+          total:    picks.length,
+          accepted: accepted.length,
+          blocked:  blocked.length,
+        },
+      }, `Demo complete: ${accepted.length} accepted, ${blocked.length} spam blocked`);
+
+    } catch (error) {
+      console.error('Error seeding events:', error);
+      res.apiError('Failed to seed events', 500);
     }
   });
 

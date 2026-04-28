@@ -1,6 +1,7 @@
 /**
  * CrisisLink API Service
  * Centralized API client for all backend communication
+ * Backend runs at http://localhost:3001 with routes at /events, /voice, /status, /health
  */
 
 import config from '../config/config';
@@ -8,17 +9,13 @@ import config from '../config/config';
 class ApiService {
   constructor() {
     this.baseUrl = config.api.baseUrl;
-    this.timeout = config.api.timeout;
-    this.retryAttempts = config.api.retryAttempts;
-    this.retryDelay = config.api.retryDelay;
+    this.timeout = config.api.timeout || 10000;
   }
 
   /**
-   * Make HTTP request with retry logic (exponential backoff, max 3 attempts)
+   * Make HTTP request with timeout and error handling
    */
   async request(endpoint, options = {}) {
-    const maxRetries = options.maxRetries || 3;
-    const retryCount = options.retryCount || 0;
     const url = `${this.baseUrl}${endpoint}`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -35,26 +32,19 @@ class ApiService {
 
       clearTimeout(timeoutId);
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(data?.error?.message || data?.error || `HTTP ${response.status}`);
       }
 
-      const data = await response.json();
       return data;
 
     } catch (error) {
       clearTimeout(timeoutId);
-      
-      if (error.name === 'AbortError') {
-        throw new Error('Request timeout');
-      }
 
-      // Retry logic with exponential backoff
-      if (options.retry !== false && retryCount < maxRetries) {
-        const backoffDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5s backoff
-        console.warn(`API request failed (attempt ${retryCount + 1}/${maxRetries}), retrying in ${backoffDelay}ms... (${error.message})`);
-        await new Promise(resolve => setTimeout(resolve, backoffDelay));
-        return this.request(endpoint, { ...options, retryCount: retryCount + 1, maxRetries });
+      if (error.name === 'AbortError') {
+        throw new Error('Request timeout - is the backend running?');
       }
 
       throw error;
@@ -62,13 +52,14 @@ class ApiService {
   }
 
   /**
-   * Get user ID from localStorage
+   * Get user ID from localStorage (creates one if not present)
    */
   getUserId() {
-    let userId = localStorage.getItem(config.user.storage.keys.userId);
+    const key = config.user.storage.keys.userId;
+    let userId = localStorage.getItem(key);
     if (!userId) {
       userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem(config.user.storage.keys.userId, userId);
+      localStorage.setItem(key, userId);
     }
     return userId;
   }
@@ -77,21 +68,26 @@ class ApiService {
 
   /**
    * Create new event
+   * Backend expects: { text, lat, lon, user_id, type?, urgency?, voice_url? }
    */
   async createEvent(eventData) {
     const payload = {
-      ...eventData,
-      user_id: this.getUserId()
+      text:         eventData.text || eventData.description || '',
+      lat:          eventData.lat  || eventData.latitude,
+      lon:          eventData.lon  || eventData.longitude,
+      type:         eventData.type,
+      urgency:      eventData.urgency,
+      voice_url:    eventData.voice_url    || null,
+      audio_base64: eventData.audio_base64 || null,
+      lang:         eventData.lang         || 'en',
+      user_id:      this.getUserId(),
     };
-
-    return await this.request('/events', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
+    return await this.request('/events', { method: 'POST', body: JSON.stringify(payload) });
   }
 
   /**
    * Get nearby events
+   * Backend expects: ?lat=&lon=&radius=
    */
   async getNearbyEvents(lat, lon, radius = 5) {
     const params = new URLSearchParams({ lat, lon, radius });
@@ -99,7 +95,7 @@ class ApiService {
   }
 
   /**
-   * Confirm event
+   * Confirm event as real
    */
   async confirmEvent(eventId) {
     return await this.request(`/events/${eventId}/confirm`, {
@@ -119,7 +115,7 @@ class ApiService {
   }
 
   /**
-   * Get all events (admin/debug)
+   * Get all events (debug)
    */
   async getAllEvents() {
     return await this.request('/events/all');
@@ -128,13 +124,15 @@ class ApiService {
   // ========== VOICE ENDPOINTS ==========
 
   /**
-   * Analyze voice text
+   * Analyze voice text to detect type/urgency
    */
   async analyzeVoice(text) {
-    return await this.request('/voice/analyze', {
+    const result = await this.request('/voice/analyze', {
       method: 'POST',
       body: JSON.stringify({ text })
     });
+    // Return the inner analysis object for convenience
+    return result?.data?.analysis || result?.data || null;
   }
 
   /**
@@ -144,194 +142,59 @@ class ApiService {
     return await this.request('/voice/types');
   }
 
-  /**
-   * Get voice keywords
-   */
-  async getVoiceKeywords() {
-    return await this.request('/voice/keywords');
-  }
-
-  /**
-   * Get urgency keywords
-   */
-  async getUrgencyKeywords() {
-    return await this.request('/voice/urgency');
-  }
-
   // ========== STATUS ENDPOINTS ==========
 
-  /**
-   * Get system status
-   */
+  /** Get system status */
   async getSystemStatus() {
     return await this.request('/status');
   }
 
-  /**
-   * Get endpoint status
-   */
-  async getEndpointStatus() {
-    return await this.request('/status/endpoints');
+  /** Alias used by StatsPanel */
+  async getStatus() {
+    return await this.getSystemStatus();
   }
 
   /**
-   * Get mesh network status
-   */
-  async getMeshStatus() {
-    return await this.request('/status/mesh');
-  }
-
-  /**
-   * Health check
-   */
-  async healthCheck() {
-    return await this.request('/health');
-  }
-
-  /**
-   * Get connected devices count
-   */
-  async getConnectionsCount() {
-    return await this.request('/status/connections');
-  }
-
-  // ========== MESH NETWORK ENDPOINTS ==========
-
-  /**
-   * Get mesh network status from /mesh/status
-   */
-  async getMeshNetworkStatus() {
-    return await this.request('/mesh/status');
-  }
-
-  /**
-   * Get mesh network topology from /mesh/topology
-   */
-  async getMeshTopology() {
-    return await this.request('/mesh/topology');
-  }
-
-  /**
-   * Get all mesh nodes from /mesh/nodes
-   */
-  async getMeshNodes() {
-    return await this.request('/mesh/nodes');
-  }
-
-  /**
-   * Get specific mesh node details
-   */
-  async getMeshNode(nodeId) {
-    return await this.request(`/mesh/nodes/${nodeId}`);
-  }
-
-  /**
-   * Add a new mesh node
-   */
-  async addMeshNode(nodeData) {
-    return await this.request('/mesh/nodes', {
-      method: 'POST',
-      body: JSON.stringify(nodeData)
-    });
-  }
-
-  /**
-   * Get mesh network activity
-   */
-  async getMeshActivity(limit = 10) {
-    return await this.request(`/mesh/activity?limit=${limit}`);
-  }
-
-  /**
-   * Test mesh propagation
-   */
-  async testMeshPropagation() {
-    return await this.request('/mesh/test-propagation', {
-      method: 'POST'
-    });
-  }
-
-  // ========== UTILITY METHODS ==========
-
-  /**
-   * Check if backend is online
+   * Health check - returns true/false
    */
   async isBackendOnline() {
     try {
-      await this.healthCheck();
-      return true;
-    } catch (error) {
+      const result = await this.request('/health');
+      return !!(result && result.success);
+    } catch {
       return false;
     }
   }
 
   /**
-   * Test all endpoints
+   * Test all configured endpoints
    */
   async testAllEndpoints() {
     const results = [];
 
     for (const endpoint of config.systemStatus.endpoints) {
       try {
-        let response;
-        const path = endpoint.path.replace(':id', 'test');
+        const path = endpoint.path.replace(':id', 'test_nonexistent');
 
-        switch (endpoint.method) {
-          case 'GET':
-            response = await this.request(path);
-            break;
-          case 'POST':
-            // Skip POST endpoints that require data
-            if (path.includes('/events/') || path === '/events') {
-              results.push({
-                ...endpoint,
-                status: 'skipped',
-                reason: 'Requires test data'
-              });
-              continue;
-            }
-            response = await this.request(path, { method: 'POST' });
-            break;
-          default:
-            results.push({
-              ...endpoint,
-              status: 'skipped',
-              reason: `Unsupported method: ${endpoint.method}`
-            });
-            continue;
+        if (endpoint.method === 'GET') {
+          await this.request(path);
+          results.push({ ...endpoint, status: 'success' });
+        } else {
+          // Skip POST endpoints - we don't want to create dummy data
+          results.push({ ...endpoint, status: 'skipped', reason: 'POST - skipped in health check' });
         }
-
-        results.push({
-          ...endpoint,
-          status: 'success',
-          response: response.success ? 'OK' : 'Error'
-        });
-
       } catch (error) {
+        // 404 on non-existent ID is still a working endpoint
+        const isExpected404 = error.message.includes('404') || error.message.includes('not found');
         results.push({
           ...endpoint,
-          status: 'error',
-          error: error.message
+          status: isExpected404 ? 'success' : 'error',
+          error: isExpected404 ? null : error.message
         });
       }
     }
 
     return results;
-  }
-
-  /**
-   * Upload audio file (future use)
-   */
-  async uploadAudio(audioBlob, eventId) {
-    const formData = new FormData();
-    formData.append('audio', audioBlob, `audio_${eventId}.webm`);
-    formData.append('event_id', eventId);
-
-    return await this.request('/voice/upload', {
-      method: 'POST',
-      body: formData,
-      headers: {} // Let browser set Content-Type for FormData
-    });
   }
 }
 

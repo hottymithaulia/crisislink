@@ -156,13 +156,25 @@ class EventStore {
   /**
    * Update user's reputation
    * @param {string} userId - User ID
-   * @param {Object} update - Update object
+   * @param {Object|string} update - Update object {confirmed, fakes} or string 'confirmed'|'fake'
    */
   updateUserReputation(userId, update) {
     const current = this.getUserReputation(userId);
+    let confirmedDelta = 0;
+    let fakesDelta = 0;
+
+    if (typeof update === 'string') {
+      // Support legacy string-based call: updateUserReputation(id, 'confirmed')
+      if (update === 'confirmed') confirmedDelta = 1;
+      else if (update === 'fake' || update === 'fakes') fakesDelta = 1;
+    } else {
+      confirmedDelta = update.confirmed || 0;
+      fakesDelta = update.fakes || 0;
+    }
+
     this.userReputation.set(userId, {
-      confirmed: current.confirmed + (update.confirmed || 0),
-      fakes: current.fakes + (update.fakes || 0),
+      confirmed: current.confirmed + confirmedDelta,
+      fakes: current.fakes + fakesDelta,
       total: current.total
     });
   }
@@ -191,7 +203,7 @@ class EventStore {
    */
   removeExpiredEvents() {
     const now = Date.now();
-    const expiryMs = this.retentionHours * 60 * 60 * 1000;
+    const expiryMs = (this.config.retentionHours || 24) * 60 * 60 * 1000;
     let removed = 0;
 
     for (const [id, event] of this.events) {

@@ -1,7 +1,7 @@
 /**
- * Centralized WebSocket Service
- * Single socket instance for the entire application
- * Uses persistent deviceId to track physical devices
+ * Centralized WebSocket / Socket.IO Service
+ * Uses socket.io-client to connect to the Node.js backend.
+ * Provides a simple on/off/emit interface.
  */
 
 import { io } from 'socket.io-client';
@@ -12,6 +12,7 @@ class SocketService {
     this.socket = null;
     this.deviceId = this.getOrCreateDeviceId();
     this.listeners = new Map();
+    this.connected = false;
   }
 
   /**
@@ -27,62 +28,76 @@ class SocketService {
   }
 
   /**
-   * Connect to WebSocket server
+   * Connect to Socket.IO server
    */
   connect() {
-    if (this.socket && this.socket.connected) {
-      console.log('🔌 Socket already connected');
+    // Already have a socket instance — don't create another even while connecting
+    if (this.socket) {
       return this.socket;
     }
 
-    this.socket = io(config.api.wsUrl, {
+    const serverUrl = config.api.wsUrl || config.api.baseUrl || 'http://localhost:3001';
+
+    console.log('🔌 Connecting to Socket.IO server:', serverUrl);
+
+    this.socket = io(serverUrl, {
       query: { deviceId: this.deviceId },
-      reconnection: true,
-      reconnectionAttempts: 5,
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000
+      timeout: 10000
     });
 
     this.socket.on('connect', () => {
-      console.log('🔌 Socket connected:', this.socket.id, 'Device:', this.deviceId);
+      console.log('🔌 Socket.IO connected. Socket ID:', this.socket.id);
+      this.connected = true;
+      this._trigger('connect', { deviceId: this.deviceId });
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.log('🔌 Socket disconnected:', reason);
+      console.log('🔌 Socket.IO disconnected:', reason);
+      this.connected = false;
+      this._trigger('disconnect', { reason });
     });
 
-    this.socket.on('reconnect_attempt', (attemptNumber) => {
-      console.log(`🔄 Reconnection attempt ${attemptNumber}`);
+    this.socket.on('connect_error', (err) => {
+      console.warn('⚠️ Socket.IO connection error:', err.message);
     });
 
-    this.socket.on('reconnect', (attemptNumber) => {
-      console.log(`✅ Reconnected after ${attemptNumber} attempts`);
-    });
+    // Forward all server events to local listeners
+    const serverEvents = [
+      'connectionCountUpdate',
+      'new_event',
+      'event_updated',
+      'eventConfirmed',
+      'eventFaked',
+      'initialEvents',
+      'meshInitialState',
+      'meshDataUpdate',
+      'deviceCount',
+    ];
 
-    this.socket.on('reconnect_failed', () => {
-      console.error('❌ Reconnection failed');
+    serverEvents.forEach(eventName => {
+      this.socket.on(eventName, (data) => {
+        this._trigger(eventName, data);
+      });
     });
 
     return this.socket;
   }
 
   /**
-   * Get the socket instance (connects if not already connected)
+   * Internal: trigger local listeners for an event
    */
-  getSocket() {
-    if (!this.socket) {
-      return this.connect();
-    }
-    return this.socket;
-  }
-
-  /**
-   * Disconnect socket
-   */
-  disconnect() {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
+  _trigger(event, data) {
+    if (this.listeners.has(event)) {
+      this.listeners.get(event).forEach(callback => {
+        try {
+          callback(data);
+        } catch (err) {
+          console.error(`Error in ${event} listener:`, err);
+        }
+      });
     }
   }
 
@@ -90,34 +105,56 @@ class SocketService {
    * Subscribe to an event
    */
   on(event, callback) {
-    const socket = this.getSocket();
-    socket.on(event, callback);
-    
-    // Track listener for cleanup
     if (!this.listeners.has(event)) {
       this.listeners.set(event, new Set());
     }
     this.listeners.get(event).add(callback);
-  }
 
-  /**
-   * Unsubscribe from an event
-   */
-  off(event, callback) {
-    const socket = this.getSocket();
-    socket.off(event, callback);
-    
-    if (this.listeners.has(event)) {
-      this.listeners.get(event).delete(callback);
+    // Ensure connected
+    if (!this.socket) {
+      this.connect();
     }
   }
 
   /**
-   * Emit an event
+   * Unsubscribe from an event (remove all listeners if no callback given)
+   */
+  off(event, callback) {
+    if (!this.listeners.has(event)) return;
+    if (callback) {
+      this.listeners.get(event).delete(callback);
+    } else {
+      this.listeners.delete(event);
+    }
+  }
+
+  /**
+   * Emit an event to the server
    */
   emit(event, data) {
-    const socket = this.getSocket();
-    socket.emit(event, data);
+    if (this.socket && this.socket.connected) {
+      this.socket.emit(event, data);
+    } else {
+      console.warn(`⚠️ Cannot emit '${event}': Socket.IO not connected`);
+    }
+  }
+
+  /**
+   * Disconnect from server
+   */
+  disconnect() {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+      this.connected = false;
+    }
+  }
+
+  /**
+   * Check if connected
+   */
+  isConnected() {
+    return this.socket && this.socket.connected;
   }
 
   /**
@@ -125,13 +162,6 @@ class SocketService {
    */
   getDeviceId() {
     return this.deviceId;
-  }
-
-  /**
-   * Check if socket is connected
-   */
-  isConnected() {
-    return this.socket && this.socket.connected;
   }
 }
 

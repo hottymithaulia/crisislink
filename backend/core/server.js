@@ -1,6 +1,6 @@
 /**
  * CrisisLink Backend Server
- * Minimal startup script that initializes all services and starts the server
+ * Main entry point - initializes all services and starts the HTTP server.
  */
 
 const createApp = require('./app');
@@ -11,8 +11,6 @@ const EventStore = require('../services/EventStore');
 const ReputationEngine = require('../services/ReputationEngine');
 const EscalationTimer = require('../services/EscalationTimer');
 const VoiceProcessor = require('../services/VoiceProcessor');
-
-// Import network module
 const MeshSimulator = require('../network/mesh.simulator');
 
 class CrisisLinkServer {
@@ -24,41 +22,41 @@ class CrisisLinkServer {
   }
 
   /**
-   * Initialize all services with configuration
+   * Initialize all services
    */
   initializeServices() {
     console.log('🔧 Initializing services...');
 
-    // Core services with config injection
     this.services.eventStore = new EventStore(config.eventStore);
     this.services.reputationEngine = new ReputationEngine(config.reputation);
     this.services.escalationTimer = new EscalationTimer(config.escalation);
     this.services.voiceProcessor = new VoiceProcessor(config.voice);
 
-    // Network module
-    this.services.meshSimulator = new MeshSimulator(config.network.mesh);
+    // Mesh simulator - always disabled for MVP; won't crash even if enabled=false
+    this.services.meshSimulator = new MeshSimulator({
+      ...config.network.mesh,
+      enabled: false  // Disabled as requested
+    });
 
-    console.log('✅ Services initialized successfully');
+    console.log('✅ Services initialized');
   }
 
   /**
    * Start escalation timer interval
    */
   startEscalationTimer() {
-    const intervalMs = config.escalation.checkIntervalSeconds * 1000;
-    
+    const intervalMs = (config.escalation.checkIntervalSeconds || 10) * 1000;
+
     this.escalationInterval = setInterval(() => {
-      const updated = this.services.escalationTimer.checkAndEscalate(
-        this.services.eventStore
-      );
-      
-      if (updated > 0) {
-        console.log(`⏰ Escalated ${updated} events`);
-        
-        // Propagate escalated events through mesh network
-        this.services.meshSimulator.propagateEscalatedEvents(
+      try {
+        const updated = this.services.escalationTimer.checkAndEscalate(
           this.services.eventStore
         );
+        if (updated > 0) {
+          console.log(`⏰ Escalated ${updated} events`);
+        }
+      } catch (err) {
+        console.error('Escalation error:', err.message);
       }
     }, intervalMs);
 
@@ -72,10 +70,13 @@ class CrisisLinkServer {
     const { app, httpServer } = createApp();
     this.app = app;
     this.httpServer = httpServer;
-    
-    // Make services available to routes
+
+    // Make services available to routes via app.locals
     this.app.locals.services = this.services;
     this.app.locals.config = config;
+
+    // Also attach services directly on httpServer for socket handlers
+    this.httpServer.services = this.services;
 
     console.log('🌐 Express app configured with WebSocket support');
   }
@@ -85,46 +86,42 @@ class CrisisLinkServer {
    */
   async start() {
     try {
-      console.log('🚀 Starting CrisisLink Server...');
+      console.log('\n🚀 Starting CrisisLink Server...\n');
 
-      // Initialize services
       this.initializeServices();
-
-      // Create Express app
       this.createApp();
-
-      // Start escalation timer
       this.startEscalationTimer();
 
-      // Start HTTP server (0.0.0.0 allows access from phones on hotspot)
-      const port = config.server.port;
-      const host = config.server.host;
+      const port = config.server.port || 3001;
+      const host = config.server.host || '0.0.0.0';
 
       this.httpServer.listen(port, host, () => {
         console.log('');
-        console.log('🎯 CrisisLink Server is running!');
-        console.log(`📍 Server: http://${host}:${port}`);
-        console.log(`🔗 API Endpoints:`);
-        console.log(`   POST   /events          - Create incident`);
-        console.log(`   GET    /events/nearby   - Get nearby incidents`);
-        console.log(`   POST   /events/:id/confirm - Confirm incident`);
-        console.log(`   POST   /events/:id/fake    - Report as fake`);
-        console.log(`   GET    /status          - System status`);
-        console.log(`   GET    /health          - Health check`);
+        console.log('🎯 CrisisLink Server is RUNNING!');
+        console.log(`📍 Local:   http://localhost:${port}`);
+        console.log(`📍 Network: http://${host}:${port}`);
         console.log('');
-        console.log('🌐 Mesh Network:', config.network.mesh.enabled ? 'Enabled' : 'Disabled');
+        console.log('🔗 API Endpoints:');
+        console.log(`   POST   /events              - Create incident`);
+        console.log(`   GET    /events/nearby       - Get nearby incidents`);
+        console.log(`   POST   /events/:id/confirm  - Confirm incident`);
+        console.log(`   POST   /events/:id/fake     - Report as fake`);
+        console.log(`   GET    /status              - System status`);
+        console.log(`   GET    /health              - Health check`);
+        console.log(`   POST   /voice/analyze       - Analyze voice text`);
+        console.log('');
         console.log('🔊 Voice Processing: Ready');
         console.log('⏱️  Escalation Timer: Active');
-        console.log('📊 Event Store: Initialized');
+        console.log('📊 Event Store: Ready');
         console.log('🏆 Reputation System: Active');
+        console.log('📡 WebSocket: Ready for real-time updates');
+        console.log('🌐 Mesh Network: Disabled (MVP mode)');
         console.log('');
       });
 
       // Graceful shutdown
       process.on('SIGTERM', () => this.shutdown());
       process.on('SIGINT', () => this.shutdown());
-
-      console.log(`📡 WebSocket server ready for real-time updates`);
 
     } catch (error) {
       console.error('❌ Failed to start server:', error);
@@ -159,8 +156,8 @@ class CrisisLinkServer {
 
 // Start the server if this file is run directly
 if (require.main === module) {
-  const crisisLinkServer = new CrisisLinkServer();
-  crisisLinkServer.start();
+  const server = new CrisisLinkServer();
+  server.start();
 }
 
 module.exports = CrisisLinkServer;

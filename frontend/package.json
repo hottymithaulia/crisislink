@@ -4,8 +4,11 @@
   "description": "CrisisLink React Frontend - Hyperlocal Crisis Network",
   "private": true,
   "dependencies": {
+    "leaflet": "^1.9.4",
+    "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-leaflet": "^5.0.0",
     "react-scripts": "5.0.1",
     "socket.io-client": "^4.7.5"
   },

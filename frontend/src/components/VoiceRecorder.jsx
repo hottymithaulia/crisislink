@@ -1,88 +1,135 @@
-import React, { useState, useRef } from 'react';
+/**
+ * VoiceRecorder.jsx
+ * Multilingual voice recording + live STT via Web Speech API.
+ * Stores audio as base64 for playback on other devices.
+ * Supports: English, Hindi, Tamil, Telugu, Spanish, French, Arabic, and more.
+ */
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import apiService from '../api/api';
-import config from '../config/config';
+import { LANGUAGES, getLangCode } from '../services/TranslationService';
 import '../styles/VoiceRecorder.css';
 
+const LANG_OPTIONS = LANGUAGES;
+
 function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
-  const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState('');
-  const [audioBlob, setAudioBlob] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isPosting, setIsPosting] = useState(false);
-  const [postStatus, setPostStatus] = useState(null);
+  const [isRecording, setIsRecording]     = useState(false);
+  const [transcript, setTranscript]       = useState('');
+  const [interimText, setInterimText]     = useState('');
+  const [audioBase64, setAudioBase64]     = useState(null);
+  const [isPosting, setIsPosting]         = useState(false);
+  const [postStatus, setPostStatus]       = useState(null); // null | 'posting' | 'success' | 'error'
+  const [selectedLang, setSelectedLang]   = useState('en-US');
+  const [sttSupported, setSttSupported]   = useState(false);
+  const [sttActive, setSttActive]         = useState(false);
 
   const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const streamRef = useRef(null);
+  const chunksRef        = useRef([]);
+  const streamRef        = useRef(null);
+  const recognitionRef   = useRef(null);
 
-  // Check if browser supports recording
-  const isRecordingSupported = typeof navigator !== 'undefined' && 
-    typeof navigator.mediaDevices !== 'undefined' && 
-    typeof window !== 'undefined' && 
-    typeof MediaRecorder !== 'undefined';
+  const isMediaSupported = typeof navigator !== 'undefined'
+    && typeof navigator.mediaDevices !== 'undefined'
+    && typeof MediaRecorder !== 'undefined';
 
-  // START RECORDING
-  const startRecording = async () => {
-    if (!isRecordingSupported) {
-      alert('Recording not supported in this browser. Please type your report instead.');
+  // Check Web Speech API support
+  useEffect(() => {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    setSttSupported(!!SpeechRec);
+  }, []);
+
+  // ── START RECORDING ───────────────────────────────────────────────────────
+  const startRecording = useCallback(async () => {
+    if (!isMediaSupported) {
+      alert('Microphone not supported in this browser.');
       return;
     }
 
     try {
       chunksRef.current = [];
+      setInterimText('');
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      mediaRecorderRef.current = new MediaRecorder(stream);
-      
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
+      // MediaRecorder for audio blob
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
-      mediaRecorderRef.current.onstop = () => {
+      recorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        setAudioBlob(blob);
-        // For hackathon: Show placeholder transcript
-        // Future: Integrate Whisper.cpp or Web Speech API for real transcription
-        setTranscript(''); // User will type their description
-        setIsProcessing(false);
+        const reader = new FileReader();
+        reader.onloadend = () => setAudioBase64(reader.result);
+        reader.readAsDataURL(blob);
       };
 
-      mediaRecorderRef.current.start();
+      recorder.start();
+
+      // Web Speech API for live transcription
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRec) {
+        const recognition = new SpeechRec();
+        recognitionRef.current = recognition;
+        recognition.lang = selectedLang;
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        recognition.onresult = (event) => {
+          let interim = '';
+          let final   = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const t = event.results[i][0].transcript;
+            if (event.results[i].isFinal) final += t + ' ';
+            else interim += t;
+          }
+          if (final) setTranscript(prev => prev + final);
+          setInterimText(interim);
+        };
+
+        recognition.onerror = (e) => {
+          if (e.error !== 'no-speech') console.warn('STT error:', e.error);
+        };
+
+        recognition.start();
+        setSttActive(true);
+      }
+
       setIsRecording(true);
-      console.log('🎤 Recording started');
+      console.log('🎤 Recording started, lang:', selectedLang);
 
     } catch (error) {
       console.error('Error starting recording:', error);
       alert('Could not access microphone. Please check permissions.');
     }
-  };
+  }, [isMediaSupported, selectedLang]);
 
-  // STOP RECORDING
-  const stopRecording = () => {
+  // ── STOP RECORDING ────────────────────────────────────────────────────────
+  const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      setIsProcessing(true);
-      
-      // Stop all audio tracks
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach(t => t.stop());
       }
-      
-      console.log('⏹️ Recording stopped');
     }
-  };
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setSttActive(false);
+    }
+    setIsRecording(false);
+    setInterimText('');
+    console.log('⏹️ Recording stopped');
+  }, [isRecording]);
 
-  // POST EVENT
-  const handlePost = async () => {
-    if (!transcript.trim()) {
-      alert('Please enter a description of the incident.');
+  // ── POST EVENT ────────────────────────────────────────────────────────────
+  const handlePost = useCallback(async () => {
+    const finalText = (transcript + interimText).trim();
+    if (!finalText) {
+      alert('Please enter or speak a description of the incident.');
       return;
     }
-
     if (backendStatus !== 'online') {
       alert('Backend is offline. Please start the server first.');
       return;
@@ -92,33 +139,23 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
     setPostStatus('posting');
 
     try {
-      // Generate unique user ID (stored in localStorage for persistence)
-      let userId = localStorage.getItem(config.user.storage.keys.userId);
-      if (!userId) {
-        userId = 'user_' + Math.random().toString(36).substring(2, 10);
-        localStorage.setItem(config.user.storage.keys.userId, userId);
-      }
-
-      const eventData = {
-        description: transcript.trim(),
-        lat: userLocation.lat,
-        lon: userLocation.lon,
-        voice_url: audioBlob ? URL.createObjectURL(audioBlob) : null
-      };
-
-      // First analyze the voice to get incident type and urgency
+      // Analyze text for type & urgency
       let analysis = null;
       try {
-        analysis = await apiService.analyzeVoice(transcript.trim());
-      } catch (error) {
-        console.warn('Voice analysis failed, using defaults:', error);
+        analysis = await apiService.analyzeVoice(finalText);
+      } catch (e) {
+        console.warn('Voice analysis failed, using defaults');
       }
 
-      // Create event with analysis results
       const eventPayload = {
-        ...eventData,
-        type: analysis?.data?.analysis?.type || 'medical',
-        urgency: analysis?.data?.analysis?.urgency || 'medium'
+        text:        finalText,
+        lat:         userLocation.lat,
+        lon:         userLocation.lon,
+        type:        analysis?.type    || 'incident',
+        urgency:     analysis?.urgency || 'medium',
+        lang:        getLangCode(selectedLang),
+        audio_base64: audioBase64 || null,
+        voice_url:   null,
       };
 
       const result = await apiService.createEvent(eventPayload);
@@ -128,16 +165,11 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
         setTimeout(() => {
           setPostStatus(null);
           setTranscript('');
-          setAudioBlob(null);
+          setAudioBase64(null);
         }, 3000);
-        
-        if (onEventPosted) {
-          onEventPosted(result.event);
-        }
-        
-        console.log('📤 Event posted:', result.eventId);
+        if (onEventPosted) onEventPosted(result.data?.event || result.data);
       } else {
-        throw new Error(result.error || 'Failed to post event');
+        throw new Error(result.error?.message || 'Failed to post event');
       }
 
     } catch (error) {
@@ -147,111 +179,135 @@ function VoiceRecorder({ onEventPosted, userLocation, backendStatus }) {
     } finally {
       setIsPosting(false);
     }
-  };
+  }, [transcript, interimText, backendStatus, userLocation, selectedLang, audioBase64, onEventPosted]);
 
-  
+  // ── RENDER ────────────────────────────────────────────────────────────────
+  const combinedText = transcript + (interimText ? `[${interimText}]` : '');
+
   return (
     <div className="voice-recorder-container">
       <div className="recorder-header">
         <h2>🎤 Report Incident</h2>
-        <p>Voice-first. No forms. Just speak or type.</p>
+        <p>Voice-first. Speak or type in your language.</p>
+      </div>
+
+      {/* Language Selector */}
+      <div style={{ marginBottom: '12px' }}>
+        <label style={{ color: '#94a3b8', fontSize: '12px', marginBottom: '6px', display: 'block' }}>
+          🌐 Language / भाषा / மொழி
+        </label>
+        <select
+          value={selectedLang}
+          onChange={e => setSelectedLang(e.target.value)}
+          disabled={isRecording}
+          style={{
+            width: '100%',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            background: 'rgba(255,255,255,0.07)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            color: '#e2e8f0',
+            fontSize: '13px',
+            cursor: 'pointer',
+            outline: 'none',
+          }}
+        >
+          {LANG_OPTIONS.map(lang => (
+            <option key={lang.code} value={lang.code} style={{ background: '#1e1e2e', color: '#e2e8f0' }}>
+              {lang.flag} {lang.label}
+            </option>
+          ))}
+        </select>
+        {!sttSupported && (
+          <p style={{ color: '#f59e0b', fontSize: '11px', margin: '4px 0 0' }}>
+            ⚠️ Live transcription requires Chrome browser. Recording still works.
+          </p>
+        )}
       </div>
 
       {/* Recording button */}
       <div className="recorder-button-group">
         {!isRecording ? (
-          <button 
-            className="btn btn-record" 
+          <button
+            className="btn btn-record"
             onClick={startRecording}
             disabled={backendStatus !== 'online'}
           >
             <span className="btn-icon">🎤</span>
-            <span className="btn-text">{isRecordingSupported ? 'Record Incident' : 'Recording Not Available'}</span>
+            <span className="btn-text">
+              {isMediaSupported ? 'Record Incident' : 'Recording Not Available'}
+            </span>
           </button>
         ) : (
           <button className="btn btn-stop" onClick={stopRecording}>
             <span className="btn-icon">⏹️</span>
             <span className="btn-text">Stop Recording</span>
-            <span className="recording-indicator"></span>
+            {sttActive && (
+              <span style={{ marginLeft: '8px', fontSize: '11px', opacity: 0.8 }}>• Live STT active</span>
+            )}
           </button>
         )}
       </div>
 
-      {/* Processing indicator */}
-      {isProcessing && (
-        <div className="processing">
-          <div className="processing-spinner"></div>
-          <span>Processing audio...</span>
+      {/* Live transcription display */}
+      {isRecording && (interimText || transcript) && (
+        <div style={{
+          background: 'rgba(99,102,241,0.1)',
+          border: '1px solid rgba(99,102,241,0.3)',
+          borderRadius: '10px',
+          padding: '10px 14px',
+          marginBottom: '12px',
+          fontSize: '13px',
+          color: '#e2e8f0',
+          minHeight: '40px',
+        }}>
+          <span style={{ color: '#94a3b8', fontSize: '11px' }}>🎙️ Live transcription:</span>
+          <p style={{ margin: '4px 0 0' }}>
+            {transcript}
+            <span style={{ color: '#94a3b8' }}>{interimText}</span>
+          </p>
         </div>
       )}
 
-      {/* Status messages */}
-      {postStatus === 'success' && (
-        <div className="status-message success">
-          ✅ Incident reported successfully!
-        </div>
-      )}
-      {postStatus === 'error' && (
-        <div className="status-message error">
-          ❌ Failed to report incident. Please try again.
+      {/* Audio playback preview */}
+      {audioBase64 && !isRecording && (
+        <div style={{ marginBottom: '12px' }}>
+          <p style={{ color: '#94a3b8', fontSize: '11px', marginBottom: '4px' }}>🔊 Recorded audio:</p>
+          <audio controls src={audioBase64} style={{ width: '100%', borderRadius: '8px' }} />
         </div>
       )}
 
-      {/* Manual input section */}
-      <div className="manual-input-section">
-        <label className="input-label">Or type your report:</label>
+      {/* Text input */}
+      <div className="text-input-group">
+        <label className="text-label">📝 Description (edit or type directly)</label>
         <textarea
-          value={transcript}
-          onChange={(e) => setTranscript(e.target.value)}
-          placeholder="Describe the incident (e.g., 'Car accident on Main Street blocking traffic')..."
-          rows="4"
-          className="transcript-textarea"
-          disabled={isPosting}
+          className="text-input"
+          value={combinedText}
+          onChange={e => { setTranscript(e.target.value); setInterimText(''); }}
+          placeholder={`Describe the incident in ${LANG_OPTIONS.find(l => l.code === selectedLang)?.label || 'your language'}...
+
+Examples:
+• Fire on Main Street, 3rd floor, people evacuating
+• Car accident near City Mall, two vehicles, urgent help needed
+• Person collapsed near Metro Station, not responding`}
+          rows={6}
+          disabled={isRecording || isPosting}
         />
-        
-        <div className="button-group">
-          <button 
-            className="btn btn-post" 
-            onClick={handlePost}
-            disabled={!transcript.trim() || isPosting || backendStatus !== 'online'}
-          >
-            {isPosting ? (
-              <>
-                <span className="btn-spinner"></span>
-                Posting...
-              </>
-            ) : (
-              <>
-                <span className="btn-icon">📤</span>
-                Post Incident
-              </>
-            )}
-          </button>
-          
-          {transcript && (
-            <button 
-              className="btn btn-cancel" 
-              onClick={() => {
-                setTranscript('');
-                setAudioBlob(null);
-              }}
-              disabled={isPosting}
-            >
-              ✕ Clear
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* Quick tips */}
-      <div className="quick-tips">
-        <p className="tips-title">💡 Tips for better reports:</p>
-        <ul>
-          <li>Mention location landmarks ("near the hospital", "at the intersection")</li>
-          <li>Include urgency words ("urgent", "emergency", "critical")</li>
-          <li>Describe the situation briefly but clearly</li>
-        </ul>
-      </div>
+      {/* Post button */}
+      <button
+        className={`btn btn-post ${postStatus || ''}`}
+        onClick={handlePost}
+        disabled={isPosting || isRecording || !transcript.trim()}
+      >
+        <span className="btn-icon">
+          {postStatus === 'posting' ? '⏳' : postStatus === 'success' ? '✅' : postStatus === 'error' ? '❌' : '📤'}
+        </span>
+        <span className="btn-text">
+          {postStatus === 'posting' ? 'Posting...' : postStatus === 'success' ? 'Posted!' : postStatus === 'error' ? 'Error - Retry' : 'Post Incident'}
+        </span>
+      </button>
     </div>
   );
 }

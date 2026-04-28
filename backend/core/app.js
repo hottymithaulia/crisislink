@@ -14,18 +14,19 @@ const rateLimit = require('express-rate-limit');
 const ApiResponse = require('../api/response');
 const config = require('../config/config');
 
-// Import routes
-const eventsRoutes = require('../routes/events.routes');
-const voiceRoutes = require('../routes/voice.routes');
-const statusRoutes = require('../routes/status.routes');
+// Import route factories
+const createEventsRoutes = require('../routes/events.routes');
+const createVoiceRoutes = require('../routes/voice.routes');
+const createStatusRoutes = require('../routes/status.routes');
+// mesh routes are a plain router (not a factory), import directly
 const meshRoutes = require('../routes/mesh.routes');
 
 function createApp() {
   const app = express();
-  
+
   // Create HTTP server and attach Socket.IO
   const httpServer = http.createServer(app);
-  
+
   // Initialize Socket.IO with CORS support for phones on hotspot
   const io = new Server(httpServer, {
     cors: {
@@ -33,123 +34,45 @@ function createApp() {
       methods: ['GET', 'POST']
     }
   });
-  
+
   // Store io instance on app for routes to access
   app.set('io', io);
-  
+
   // Track devices by deviceId instead of socket.id
-  // Map: deviceId -> Set of socket connections
   const deviceConnections = new Map();
-  
-  // Get unique device count
   const getDeviceCount = () => deviceConnections.size;
-  
+
   // Socket.IO connection handling
   io.on('connection', (socket) => {
-    const deviceId = socket.handshake.query.deviceId;
+    const deviceId = socket.handshake.query.deviceId || socket.id;
     console.log(`📱 WebSocket client connected: ${socket.id}, Device: ${deviceId}`);
-    
+
     // Track device connection
     if (!deviceConnections.has(deviceId)) {
       deviceConnections.set(deviceId, new Set());
     }
     deviceConnections.get(deviceId).add(socket.id);
-    
+
     // Broadcast updated device count to all clients
-    const connectedDevices = getDeviceCount();
-    io.emit('connectionCountUpdate', { connectedDevices });
-    console.log(`📊 Device count updated: ${connectedDevices}`);
-    
-    // Send initial state on connection
-    const sendInitialState = async () => {
-      try {
-        const services = httpServer.services;
-        const meshSimulator = services?.meshSimulator;
-        
-        // Send mesh data if enabled
-        if (meshSimulator && meshSimulator.config.enabled) {
-          const meshStatus = {
-            enabled: true,
-            statistics: meshSimulator.getStatistics(),
-            topology: meshSimulator.getNetworkTopology(),
-            nodes: Array.from(meshSimulator.nodes.values()).map(node => ({
-              id: node.id,
-              name: node.name,
-              type: node.type,
-              status: node.status,
-              battery: node.battery,
-              load: node.load,
-              reputation: node.reputation,
-              eventCount: node.events.size,
-              connections: node.connections.length,
-              bandwidth: node.bandwidth,
-              range: node.range,
-              lastSeen: node.lastSeen
-            })),
-            activity: meshSimulator.getRecentActivity(10)
-          };
-          socket.emit('meshInitialState', meshStatus);
-        }
-      } catch (error) {
-        console.error('Error sending initial state:', error);
-      }
-    };
-    
-    sendInitialState();
-    
-    // Handle mesh data requests
-    socket.on('requestMeshData', async () => {
-      try {
-        const services = httpServer.services;
-        const meshSimulator = services?.meshSimulator;
-        
-        if (meshSimulator && meshSimulator.config.enabled) {
-          const meshData = {
-            status: {
-              enabled: true,
-              statistics: meshSimulator.getStatistics(),
-              config: {
-                adaptiveRouting: meshSimulator.config.adaptiveRouting,
-                messageCompression: meshSimulator.config.messageCompression,
-                batterySimulation: meshSimulator.config.batterySimulation
-              }
-            },
-            topology: meshSimulator.getNetworkTopology(),
-            nodes: Array.from(meshSimulator.nodes.values()).map(node => ({
-              id: node.id,
-              name: node.name,
-              type: node.type,
-              status: node.status,
-              battery: node.battery,
-              load: node.load,
-              reputation: node.reputation,
-              eventCount: node.events.size,
-              connections: node.connections.length,
-              bandwidth: node.bandwidth,
-              range: node.range,
-              lastSeen: node.lastSeen
-            })),
-            activity: meshSimulator.getRecentActivity(10)
-          };
-          socket.emit('meshDataUpdate', meshData);
-        }
-      } catch (error) {
-        console.error('Error sending mesh data:', error);
-      }
-    });
+    io.emit('connectionCountUpdate', { connectedDevices: getDeviceCount() });
+    console.log(`📊 Device count updated: ${getDeviceCount()}`);
 
     // Handle nearby events requests
-    socket.on('requestNearbyEvents', async (data) => {
+    socket.on('requestNearbyEvents', (data) => {
       try {
-        const services = httpServer.services;
-        const eventStore = services?.eventStore;
-        
-        if (eventStore) {
+        const services = app.locals.services;
+        const eventStore = services && services.eventStore;
+
+        if (eventStore && data) {
           const { lat, lon, radius = 5 } = data;
-          const nearbyEvents = eventStore.getNearbyEvents(lat, lon, radius);
-          
+          const nearbyEvents = eventStore.getNearbyEvents(
+            parseFloat(lat) || 0,
+            parseFloat(lon) || 0,
+            parseFloat(radius)
+          );
+
           socket.emit('initialEvents', {
-            events: nearbyEvents.map(event => event.toJSON()),
+            events: nearbyEvents,
             count: nearbyEvents.length
           });
         }
@@ -158,40 +81,35 @@ function createApp() {
         socket.emit('initialEvents', { events: [], count: 0 });
       }
     });
-    
+
     socket.on('disconnect', () => {
-      console.log(`📱 WebSocket client disconnected: ${socket.id}, Device: ${deviceId}`);
-      
-      // Remove socket from device connections
+      console.log(`📱 WebSocket client disconnected: ${socket.id}`);
+
       if (deviceConnections.has(deviceId)) {
         deviceConnections.get(deviceId).delete(socket.id);
-        
-        // If no more connections for this device, remove device entry
         if (deviceConnections.get(deviceId).size === 0) {
           deviceConnections.delete(deviceId);
         }
       }
-      
-      // Broadcast updated device count
-      const connectedDevices = getDeviceCount();
-      io.emit('connectionCountUpdate', { connectedDevices });
-      console.log(`📊 Device count updated: ${connectedDevices}`);
+
+      io.emit('connectionCountUpdate', { connectedDevices: getDeviceCount() });
     });
   });
 
   // Security middleware
-  app.use(helmet({
-    contentSecurityPolicy: false, // Allow inline styles for demo
-  }));
+  app.use(helmet({ contentSecurityPolicy: false }));
 
-  // CORS configuration
-  app.use(cors(config.server.cors));
+  // CORS configuration - allow all for local dev
+  app.use(cors({ origin: true, credentials: true }));
 
   // Request logging
-  app.use(morgan(config.logging.format));
+  app.use(morgan('dev'));
 
   // Rate limiting
-  const limiter = rateLimit(config.api.rateLimit);
+  const limiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 500
+  });
   app.use(limiter);
 
   // Body parsing middleware
@@ -206,14 +124,15 @@ function createApp() {
     res.apiSuccess({
       status: 'healthy',
       timestamp: new Date().toISOString(),
-      version: config.api.version
+      version: 'v1'
     });
   });
 
-  // API routes
-  app.use('/events', eventsRoutes);
-  app.use('/voice', voiceRoutes);
-  app.use('/status', statusRoutes);
+  // API routes - call factory functions to get routers
+  app.use('/events', createEventsRoutes());
+  app.use('/voice', createVoiceRoutes());
+  app.use('/status', createStatusRoutes());
+  // mesh routes is already a plain Express router
   app.use('/mesh', meshRoutes);
 
   // 404 handler
@@ -224,12 +143,7 @@ function createApp() {
   // Global error handler
   app.use((err, req, res, next) => {
     console.error('Unhandled error:', err);
-    res.apiError(
-      process.env.NODE_ENV === 'production' 
-        ? 'Internal server error' 
-        : err.message,
-      500
-    );
+    res.apiError(err.message || 'Internal server error', 500);
   });
 
   return { app, httpServer };
