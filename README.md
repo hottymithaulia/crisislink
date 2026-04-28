@@ -3,7 +3,7 @@
   <br/><br/>
   <h1>🚨 CrisisLink</h1>
   <p><b>Hyperlocal, Voice-First AI Emergency Network</b></p>
-  <p><i>Winner / Hackathon Submission 2026</i></p>
+  <p><i>Hackathon Submission 2026</i></p>
 </div>
 
 ---
