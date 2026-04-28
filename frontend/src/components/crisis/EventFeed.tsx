@@ -171,6 +171,12 @@ export function EventFeed({
                 >
                   {votedFake.has(e.id) ? "✗ Reported" : "Fake"}
                 </button>
+                <button
+                  onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${e.lat},${e.lon}`, "_blank")}
+                  className="flex-1 rounded-lg border border-primary/30 bg-primary/10 px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-primary transition hover:bg-primary/20 hover:border-primary/50"
+                >
+                  🗺️ Going
+                </button>
               </div>
             </div>
           );
