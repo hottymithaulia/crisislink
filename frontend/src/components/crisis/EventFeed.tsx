@@ -116,6 +116,18 @@ export function EventFeed({
               <div className="mb-3 text-sm font-medium leading-relaxed text-text-primary">
                 {e.text}
               </div>
+              {e.audio_base64 && (
+                <div className="mb-3 rounded-lg bg-black/20 p-2 border border-white/5">
+                  <div className="text-[10px] mb-1 font-semibold uppercase tracking-wider text-text-muted">
+                    🗣️ Original Voice Note ({e.lang.toUpperCase()})
+                  </div>
+                  <audio 
+                    src={e.audio_base64} 
+                    controls 
+                    className="h-8 w-full outline-none opacity-80 filter invert sepia hue-rotate-180" 
+                  />
+                </div>
+              )}
               <div className="mb-3 h-1 overflow-hidden rounded-full bg-white/5">
                 <div
                   className="h-full transition-all"

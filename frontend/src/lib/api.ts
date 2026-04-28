@@ -57,7 +57,7 @@ export const api = {
     safeFetch<{ success: boolean; data: { events: CrisisEvent[] } }>(
       `/events/nearby?lat=${lat}&lon=${lon}&radius=${radius}`
     ),
-  postEvent: (body: { text: string; lat: number; lon: number; user_id: string; lang: string }) =>
+  postEvent: (body: { text: string; lat: number; lon: number; user_id: string; lang: string; audio_base64?: string }) =>
     safeFetch<{ success: boolean; data?: { event: CrisisEvent }; reason?: string }>(
       `/events`,
       { method: "POST", body: JSON.stringify(body) }

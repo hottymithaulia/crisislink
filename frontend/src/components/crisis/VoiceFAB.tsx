@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
-  onSubmit: (text: string, lang: string) => Promise<void> | void;
+  onSubmit: (text: string, lang: string, audioBase64?: string) => Promise<void> | void;
 }
 
 const LANGS = [
@@ -21,9 +21,14 @@ export function VoiceFAB({ onSubmit }: Props) {
   const [text, setText] = useState("");
   const [lang, setLang] = useState("en-US");
   const [posting, setPosting] = useState(false);
+  const [audioBase64, setAudioBase64] = useState<string | undefined>(undefined);
+  
   const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
 
-  const startRecording = () => {
+  const startRecording = async () => {
+    // 1. Start Speech Recognition
     const SR =
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition;
@@ -44,11 +49,40 @@ export function VoiceFAB({ onSubmit }: Props) {
     r.onerror = () => setRecording(false);
     r.start();
     recognitionRef.current = r;
+
+    // 2. Start Audio Recording (MediaRecorder)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        const reader = new FileReader();
+        reader.readAsDataURL(audioBlob);
+        reader.onloadend = () => {
+          setAudioBase64(reader.result as string);
+        };
+        // stop tracks
+        stream.getTracks().forEach((track) => track.stop());
+      };
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+    } catch (err) {
+      console.warn("MediaRecorder permission denied or failed", err);
+    }
+
     setRecording(true);
+    setAudioBase64(undefined); // Reset previous audio
   };
 
   const stopRecording = () => {
     recognitionRef.current?.stop();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
     setRecording(false);
   };
 
@@ -56,8 +90,9 @@ export function VoiceFAB({ onSubmit }: Props) {
     if (!text.trim()) return;
     setPosting(true);
     try {
-      await onSubmit(text.trim(), lang.split("-")[0]);
+      await onSubmit(text.trim(), lang.split("-")[0], audioBase64);
       setText("");
+      setAudioBase64(undefined);
       setOpen(false);
     } finally {
       setPosting(false);

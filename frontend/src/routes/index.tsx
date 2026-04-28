@@ -168,9 +168,9 @@ function Index() {
     } catch {}
   };
 
-  const handlePost = async (text: string, lang: string) => {
+  const handlePost = async (text: string, lang: string, audioBase64?: string) => {
     try {
-      const r = await api.postEvent({ text, lat: pos[0], lon: pos[1], user_id: userId, lang });
+      const r = await api.postEvent({ text, lat: pos[0], lon: pos[1], user_id: userId, lang, audio_base64: audioBase64 });
       if (r.success && r.data?.event) {
         pushToast({ type: "success", text: "Incident posted to the mesh" });
       } else {
