@@ -146,7 +146,7 @@ export function VoiceFAB({ onSubmit }: Props) {
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Describe the incident, or hold the mic to speak…"
+              placeholder="Long press the 🎙️ to speak, or type here..."
               className="mb-3 w-full resize-none rounded-xl border border-glass-border bg-void/60 p-3 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none"
               rows={3}
             />

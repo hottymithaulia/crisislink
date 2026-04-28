@@ -178,7 +178,11 @@ function Index() {
         pushToast({ type: "error", text: `Blocked: ${r.reason || "spam filter"}` });
       }
     } catch (e: any) {
-      pushToast({ type: "error", text: "Failed to post — backend unreachable" });
+      if (e.response?.status === 422) {
+        pushToast({ type: "error", text: `Blocked by AI: ${e.response.data?.error || "Spam detected"}` });
+      } else {
+        pushToast({ type: "error", text: "Failed to post — backend unreachable" });
+      }
     }
   };
 
