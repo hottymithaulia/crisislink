@@ -44,10 +44,7 @@ export const Route = createRootRoute({
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",
       },
-      {
-        rel: "icon",
-        href: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='80' font-size='80'%3E🆘%3C/text%3E%3C/svg%3E",
-      },
+      { rel: "icon", href: "https://github.com/user-attachments/assets/d0c6ee8f-0eb5-4947-bf47-d48ffc3d844e", type: "image/png" },
     ],
   }),
   shellComponent: RootShell,

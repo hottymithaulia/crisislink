@@ -1,4 +1,8 @@
-# 🚨 CrisisLink - Hyperlocal Crisis Network
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/d0c6ee8f-0eb5-4947-bf47-d48ffc3d844e" alt="CrisisLink Logo" width="140" />
+</p>
+
+# CrisisLink — Hyperlocal Crisis Network
 
 A voice-first, real-time emergency reporting system that connects communities during crises through mesh networking and reputation-based validation.
 

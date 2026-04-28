@@ -26,7 +26,11 @@ export function TopBar({
   return (
     <div className="relative z-[1000] flex h-12 items-center justify-between border-b border-glass-border glass-strong px-4">
       <div className="flex items-center gap-3">
-        <span className="text-xl">🆘</span>
+        <img
+          src="https://github.com/user-attachments/assets/d0c6ee8f-0eb5-4947-bf47-d48ffc3d844e"
+          alt="CrisisLink"
+          className="h-8 w-8 object-contain"
+        />
         <div className="leading-none">
           <div className="text-[15px] font-extrabold tracking-tight">CrisisLink</div>
           <div className="hidden sm:block text-[9px] uppercase tracking-widest text-text-muted">
