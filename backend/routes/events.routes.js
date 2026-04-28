@@ -116,7 +116,7 @@ function createEventsRoutes() {
         console.log(`📡 WebSocket: Broadcasted new event ${event.id} [${tier.id}]`);
       }
 
-      console.log(`📨 New event from user: ${user_id || 'anonymous'} (${detectedType}/${detectedUrgency})`);
+      console.log(`📨 New event from user: ${user_id || 'anonymous'} (${finalType}/${finalUrgency})`);
 
       res.apiCreated({
         event_id: event.id,
