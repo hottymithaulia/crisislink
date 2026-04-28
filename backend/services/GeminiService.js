@@ -17,8 +17,8 @@ let model = null;
 
 if (GEMINI_API_KEY) {
   genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-  model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-  console.log('✨ Gemini 1.5 Flash loaded — smart incident analysis active');
+  model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  console.log('✨ Gemini 2.5 Flash loaded — smart incident analysis active');
 } else {
   console.warn('⚠️  GEMINI_API_KEY not set — falling back to keyword analysis');
 }
