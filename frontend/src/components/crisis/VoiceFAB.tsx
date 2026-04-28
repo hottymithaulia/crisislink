@@ -153,10 +153,15 @@ export function VoiceFAB({ onSubmit }: Props) {
 
             <div className="flex gap-2">
               <button
-                onMouseDown={startRecording}
-                onMouseUp={stopRecording}
-                onTouchStart={startRecording}
-                onTouchEnd={stopRecording}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  startRecording();
+                }}
+                onPointerUp={(e) => {
+                  e.preventDefault();
+                  stopRecording();
+                }}
+                onPointerLeave={stopRecording}
                 className={`flex h-12 w-14 items-center justify-center rounded-xl text-xl transition ${
                   recording
                     ? "bg-emergency text-white shadow-[0_0_24px_rgba(239,68,68,0.6)]"
