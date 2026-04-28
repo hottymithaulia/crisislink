@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const PingEvent = require('../services/PingEvent');
 const SpamFilter = require('../services/SpamFilter');
+const GeminiService = require('../services/GeminiService');
 
 function createEventsRoutes() {
 
@@ -37,47 +38,51 @@ function createEventsRoutes() {
         return res.apiError('Missing required fields: text (or description), lat/latitude, lon/longitude', 400);
       }
 
-      let detectedType = type;
-      let detectedUrgency = urgency;
-
-      if (!detectedType || !detectedUrgency) {
-        const analysis = services.voiceProcessor.analyzeVoiceInput(eventText);
-        detectedType    = detectedType    || analysis.type    || 'incident';
-        detectedUrgency = detectedUrgency || analysis.urgency || 'medium';
+      // ── SPAM FILTER (Basic Geo) ───────────────────────────────────────
+      const geoCheck = SpamFilter.checkCoordinates(eventLat, eventLon);
+      if (!geoCheck.valid) {
+        return res.apiError(`Location rejected: ${geoCheck.reason}`, 422);
       }
+
+      // ── GEMINI ANALYSIS (Type, Urgency, Spam) ─────────────────────────
+      let finalType = type;
+      let finalUrgency = urgency;
+      let summary = eventText;
+      let detectedLang = lang || 'en';
+
+      const analysis = await GeminiService.analyzeReport(eventText);
+
+      if (!analysis.is_genuine) {
+        console.warn(`🚫 Gemini blocked spam from ${user_id || 'anonymous'}: ${analysis.spam_reason}`);
+        return res.status(422).json({
+          success: false,
+          error: { message: analysis.spam_reason, code: 'SPAM_DETECTED' },
+          spam: true,
+          reason: analysis.spam_reason,
+          confidence: analysis.spam_confidence,
+        });
+      }
+
+      finalType = finalType || analysis.type || 'incident';
+      finalUrgency = finalUrgency || analysis.urgency || 'medium';
+      summary = analysis.summary || eventText;
+      detectedLang = analysis.lang_detected || detectedLang;
 
       const event_id = `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
       const event = new PingEvent({
         id:           event_id,
-        type:         detectedType,
-        urgency:      detectedUrgency,
-        text:         eventText,
+        type:         finalType,
+        urgency:      finalUrgency,
+        text:         eventText, // Store original text
         lat:          eventLat,
         lon:          eventLon,
         user_id:      user_id || 'anonymous',
         voice_url:    voice_url    || null,
         audio_base64: audio_base64 || null,
-        lang:         lang         || 'en',
+        lang:         detectedLang,
         user_reputation: 0.5,
       });
-
-      // ── SPAM FILTER ───────────────────────────────────────────────────
-      const geoCheck = SpamFilter.checkCoordinates(eventLat, eventLon);
-      if (!geoCheck.valid) {
-        return res.apiError(`Location rejected: ${geoCheck.reason}`, 422);
-      }
-      const spamCheck = SpamFilter.analyze(eventText);
-      if (spamCheck.spam) {
-        console.warn(`🚫 Spam blocked from ${user_id || 'anonymous'}: ${spamCheck.reason}`);
-        return res.status(422).json({
-          success: false,
-          error: { message: spamCheck.reason, code: 'SPAM_DETECTED' },
-          spam: true,
-          reason: spamCheck.reason,
-          confidence: spamCheck.confidence,
-        });
-      }
 
       // Store event
       services.eventStore.addEvent(event);

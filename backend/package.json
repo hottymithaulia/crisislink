@@ -8,6 +8,7 @@
     "test": "echo \"Run individual test files: node __tests__/test_processor.js\""
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "body-parser": "^1.20.2",
     "cors": "^2.8.5",
     "express": "^4.18.2",
